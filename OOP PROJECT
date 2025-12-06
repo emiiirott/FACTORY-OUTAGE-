@@ -1,8 +1,1733 @@
 import java.awt.*;
 import java.awt.event.*;
+import java.util.ArrayList;import java.awt.*;
+import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Random;
+import javax.swing.*;
+import javax.imageio.ImageIO;
+import java.io.File;
+import java.io.IOException;
+
+public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
+    
+    // ============================================
+    // DIFFICULTY SYSTEM
+    // ============================================
+    
+    enum DifficultyMode {
+        NORMAL("Normal Mode", "Standard gameplay with preview"),
+        PERMADEATH("Permadeath", "One life for all levels - no battery refills!"),
+        BLACKOUT("Blackout Challenge", "No memory preview - pure darkness"),
+        SPEEDRUN("Speed Run", "Race against the clock!");
+        
+        String name;
+        String description;
+        
+        DifficultyMode(String name, String description) {
+            this.name = name;
+            this.description = description;
+        }
+    }
+    
+    private DifficultyMode selectedDifficulty = DifficultyMode.NORMAL;
+    private boolean showDifficultySelect = false;
+    private int speedrunTimer = 0;
+    private int[] speedrunTargets = {600, 800, 1000, 1200}; // Target times in ticks for each level
+    private int levelStartTime = 0;
+    private int totalLives = 3;
+    private int currentLives = 3;
+    
+ // ============================================
+ // SHOP SYSTEM
+ // ============================================
+
+ private boolean showShop = false;
+ private int totalPoints = 0; // Accumulated points across all games
+ private int shopSelectedIndex = 0;
+
+ // Upgrade levels (0 = not purchased, higher = more upgraded)
+ private int batteryDrainUpgrade = 0;
+ private int visionRangeUpgrade = 0;
+ private int movementSpeedUpgrade = 0;
+ private int maxBatteryUpgrade = 0;
+ private int startingLivesUpgrade = 0;
+
+ // Upgrade costs and max levels
+ private static final int MAX_UPGRADE_LEVEL = 5;
+
+ class ShopItem {
+     String name;
+     String description;
+     int baseCost;
+     int currentLevel;
+     int maxLevel;
+     String stat;
+     
+     ShopItem(String name, String description, int baseCost, int maxLevel, String stat) {
+         this.name = name;
+         this.description = description;
+         this.baseCost = baseCost;
+         this.currentLevel = 0;
+         this.maxLevel = maxLevel;
+         this.stat = stat;
+     }
+     
+     int getCost() {
+         return baseCost * (currentLevel + 1); // Cost increases with each level
+     }
+     
+     boolean isMaxed() {
+         return currentLevel >= maxLevel;
+     }
+     
+     String getDisplayInfo() {
+         if (isMaxed()) {
+             return " [MAX]";
+         }
+         return " [Lv " + currentLevel + "/" + maxLevel + "]";
+     }
+ }
+
+ private ShopItem[] shopItems;
+
+ private void initializeShop() {
+     shopItems = new ShopItem[] {
+         new ShopItem("Battery Efficiency", "Reduces battery drain rate", 500, 5, "DRAIN"),
+         new ShopItem("Vision Enhancer", "Increases flashlight radius", 750, 5, "VISION"),
+         new ShopItem("Speed Boost", "Increases movement speed", 600, 5, "SPEED"),
+         new ShopItem("Battery Capacity", "Increases max battery capacity", 800, 5, "CAPACITY"),
+         new ShopItem("Extra Life", "Start with more lives (Normal mode)", 1000, 3, "LIVES")
+     };
+     
+     // Load current upgrade levels
+     shopItems[0].currentLevel = batteryDrainUpgrade;
+     shopItems[1].currentLevel = visionRangeUpgrade;
+     shopItems[2].currentLevel = movementSpeedUpgrade;
+     shopItems[3].currentLevel = maxBatteryUpgrade;
+     shopItems[4].currentLevel = startingLivesUpgrade;
+ }
+ 
+    // ============================================
+    // ORIGINAL CODE
+    // ============================================
+    
+ // Change from String[][] to String[][][]
+ // Format: [level][variation][rows]
+ private String[][][] levelMaps = {
+     // LEVEL 1 - Workshop (Easy) - 3 variations
+     {
+         {  // Variation 1
+             "XXXXXXXXXXXXXXXXXXX",
+             "X   A     X     B X",
+             "X XXPXXX  X   XX  X",
+             "X       R         X",
+             "X XX X XXXXX X XX X",
+             "X  L X   S   X L  X",
+             "XXXX MXXX XXXX XXXX",
+             "X    X   A   X    X",
+             "XXXX   XXXXX   XXXX",
+             "X         B   K   X",
+             "XXXX X MXXXX X XXXX",
+             "X    X       X    X",
+             "XXMX X XXXXX X XXXX",
+             "X        X        X",
+             "X XX XXX X XXX XX X",
+             "X  X           X  X",
+             "XX X X MXXXX X X XX",
+             "X    X   X   X    X",
+             "X XXXXXM X MMXXXX X",
+             "X       AEB       X",
+             "XXXXXXXXXXXXXXXXXXX" 
+         },
+         {  // Variation 2 - Different layout
+             "XXXXXXXXXXXXXXXXXXX",
+             "X P    B    A     X",
+             "X XXXXX XXXXX XXX X",
+             "X    L     R      X",
+             "XXXX XMXXXXXXXXXXX X",
+             "X  A    X    S    X",
+             "X XXXXX X XXXXX X X",
+             "X       X    K    X",
+             "X XMXXXXXXX XXXXX X",
+             "X     L           X",
+             "XXXXX XXXXX XXXXXXX",
+             "X   B     R     A X",
+             "X XXXXX X XXXXX XXX",
+             "X       X         X",
+             "X XXXMXXX XXXXX X X",
+             "X   A   X   L     X",
+             "XXXXX X XMXXXXXXX X",
+             "X     X     B     X",
+             "X XXXXX XXXXX XXXXX",
+             "X   A         E   X",
+             "XXXXXXXXXXXXXXXXXXX"
+         },
+         {  // Variation 3 - Another different layout
+             "XXXXXXXXXXXXXXXXXXX",
+             "X E     K     A   X",
+             "X XXXXX XXXXX XXX X",
+             "X   L       B     X",
+             "XXXMXXX XXXXX XXXXX",
+             "X     X   R   X   X",
+             "X XXX X XXXXX X X X",
+             "X  A      S       X",
+             "XXXX XMXXX XXXX XXX",
+             "X        X    L   X",
+             "X XXXXX XX XXXXXXX",
+             "X  P  B     A     X",
+             "XXXXX XXXMXXXXXXXXX",
+             "X         X   R   X",
+             "X XXXXX X XXX XXX X",
+             "X   L   X         X",
+             "XXXXX XMXXX XXXXXXX",
+             "X     X   B   A   X",
+             "X XXXXX XXXXX XXXXX",
+             "X         R       X",
+             "XXXXXXXXXXXXXXXXXXX"
+         }
+     },
+     
+     // LEVEL 2 - Chemical Storage (Intermediate) - 3 variations
+     {
+         {  // Variation 1 (your original)
+             "XXXXXXXXXXXXXXXXXXX",
+             "X A     R   L   A X",
+             "X XXXMX X XXXXX X X",
+             "X P     X    S    X",
+             "X XXX XXXXXXX XXX X",
+             "X X       B       X",
+             "X X MMXXXXXXXXXXX X",
+             "X X  L  X X   A   X",
+             "X XXXXXXX X XXXXXXX",
+             "X                 X",
+             "XXXXXXX X XXXXXXXXX",
+             "X    K  X    L    X",
+             "X XXXXXXXXXXXXX X X",
+             "X  A    X       X X",
+             "XXXXXXX X XXXXXXX X",
+             "X       X    B    X",
+             "X XXXXX X XXXXX XXX",
+             "X   L   X         X",
+             "XXXXXXX X XXXXXXXXX",
+             "X   A  R     E    X",
+             "XXXXXXXXXXXXXXXXXXX"
+         },
+         {  // Variation 2
+             "XXXXXXXXXXXXXXXXXXX",
+             "X P  L    B   R   X",
+             "XXXXX XXXMXXXXXXXXX",
+             "X   A   X    S    X",
+             "X XXXXX XXX XXXXX X",
+             "X     K   X   L   X",
+             "XXXMXXX X X XXXXXXX",
+             "X       X         X",
+             "X XXXXX XXXXX XXX X",
+             "X   R     A       X",
+             "XXXXX XMXXX XXXXXXX",
+             "X     X     B     X",
+             "X XXX XXXXX XXX X X",
+             "X   L     R   X   X",
+             "XXXXX XXXMXXX XXXXX",
+             "X   A   X     S   X",
+             "X XXXXX X XXXXX XXX",
+             "X       X         X",
+             "XMXXXXX XXXXX XXXXX",
+             "X   L         E   X",
+             "XXXXXXXXXXXXXXXXXXX"
+         },
+         {  // Variation 3
+             "XXXXXXXXXXXXXXXXXXX",
+             "X K   R   A   B   X",
+             "X XXXMXXXXX XXXXX X",
+             "X       L     S   X",
+             "XXXXX X XXXXX XXXXX",
+             "X  P  X   R       X",
+             "X XXX XXXMXXX XXX X",
+             "X   A     X   L   X",
+             "XXXXX XXXXX XXXXXXX",
+             "X       B         X",
+             "X XXXMXXX XXXXX X X",
+             "X   L   X   A     X",
+             "XXXXX X XXXXX XXXXX",
+             "X     X     R     X",
+             "X XXX XXXMXXX XXX X",
+             "X   S     X   B   X",
+             "XXXXX XXXXX XXXXXXX",
+             "X   A   L         X",
+             "XMXXXXX XXXXX XXXXX",
+             "X         R   E   X",
+             "XXXXXXXXXXXXXXXXXXX"
+         }
+     },
+     
+     // LEVEL 3 - Server Room (Advanced) - 3 variations
+     {
+         {  // Variation 1 (your original)
+             "XXXXXXXXXXXXXXXXXXX",
+             "XAAA X  L  X AAA XX",
+             "XAAA X XMM X AAA XX",
+             "X    X  R  XE B  XX",
+             "XXXX X X X X XXXXXXX",
+             "X      X X    K   X",
+             "X XXXXXXXXXXXMM X X",
+             "X   L  XXX    A   X",
+             "XXXX X  S  X XXXXXX",
+             "X    X XXX X      X",
+             "X XXXX   XXXX X X X",
+             "X    X XXX X      X",
+             "XXXX X  B  X XXXXXX",
+             "X      MMX        X",
+             "X MMXXXXXXXXXXX X X",
+             "X      X X    L   X",
+             "XXXX X X XPX XXXXXX",
+             "X    X  A  X  R  XX",
+             "XAAA X XXX X AAA XX",
+             "XAA           KAA X",
+             "XXXXXXXXXXXXXXXXXXX"
+         },
+         {  // Variation 2
+             "XXXXXXXXXXXXXXXXXXX",
+             "XAAA    E    AAA XX",
+             "XAAA XMMXMX AAA  XX",
+             "X  P X  L  X  B  XX",
+             "XXXX XXX XXX XXXXXXX",
+             "X    R   X    K   X",
+             "X XXXXX XXXXMM XX X",
+             "X   A   XXX   S   X",
+             "XXXX XXXMXXX XXXXXX",
+             "X        XXX      X",
+             "X XXXX L XXXX XXX X",
+             "X    XXXRXXX   A  X",
+             "XXXX X  B  X XXXXXX",
+             "X    MMXMX        X",
+             "X MMXXXXXXXXXXX X X",
+             "X   A  X X    L   X",
+             "XXXX XXX X X XXXXXX",
+             "X    X  S  X  R  XX",
+             "XAAA XXXXX X AAA XX",
+             "XAA      K    AAA X",
+             "XXXXXXXXXXXXXXXXXXX"
+         },
+         {  // Variation 3
+             "XXXXXXXXXXXXXXXXXXX",
+             "XAAA  L  K   AAA XX",
+             "XAAA XMXMXX AAA  XX",
+             "X    X  B  X  R  XX",
+             "XXXX XXXXXXX XXXXXXX",
+             "X  P     X    E   X",
+             "X XXXXXMXXXXMM XX X",
+             "X   S   XXX   A   X",
+             "XXXX XXXMXXX XXXXXX",
+             "X    R   XXX   L  X",
+             "X XXXX   XXXX XXX X",
+             "X    XXX XXX   B  X",
+             "XXXX X  A  X XXXXXX",
+             "X    MMXMX    S   X",
+             "X MMXXXXXXXXXXX X X",
+             "X   L  X X    R   X",
+             "XXXX XXX XXX XXXXXX",
+             "X    X  A  X  K  XX",
+             "XAAA XXXXX X AAA XX",
+             "XAA      B    AAA X",
+             "XXXXXXXXXXXXXXXXXXX"
+         }
+     },
+     
+     // LEVEL 4 - Reactor Core (Hardest) - 3 variations
+     {
+         {  // Variation 1 (your original)
+             "XXXXXXXXXXXXXXXXXXX",
+             "X  AAA  X X  AAA  X",
+             "X XXXMM X X XXXXX X",
+             "X   L       B     X",
+             "XXXXXPXXXXXXX XXXXX",
+             "X  A  X  R  X  A  X",
+             "X XXX M XXX X XXX X",
+             "X       K    L    X",
+             "X XXX MMXXXXX XXX X",
+             "X                 X",
+             "X XXX X MMX X XXX X",
+             "X  B  X  S  X  B  X",
+             "X MMXXXXXXXXXXX X X",
+             "X    L    R   A   X",
+             "XXXXX XXX XXX XXXXX",
+             "X   X X  B  X X   X",
+             "X X X X XXX X X X X",
+             "X X       L       X",
+             "X X XXXXXXXXXXX X X",
+             "X   A        E    X",
+             "XXXXXXXXXXXXXXXXXXX"
+         },
+         {  // Variation 2
+             "XXXXXXXXXXXXXXXXXXX",
+             "X  AAA      AAA   X",
+             "X XMXMX X XMXXX X X",
+             "X   L   P   B     X",
+             "XXXXX XXXXXXX XXXXX",
+             "X  B  X  S  X  A  X",
+             "X XXX MMXXX XXMXX X",
+             "X    R  K    L    X",
+             "X XXX MMXXXXX XXX X",
+             "X         R       X",
+             "X XXX XMMMX X XXX X",
+             "X  A  X  L  X  B  X",
+             "X MMXXXXXXXXXXX X X",
+             "X    S    R   A   X",
+             "XXXXX XXX XXX XXXXX",
+             "X   X X  K  X X   X",
+             "X X XXX XXX XXX X X",
+             "X X    L  B       X",
+             "X XMXXXXXXXXXXX X X",
+             "X   A    R   E    X",
+             "XXXXXXXXXXXXXXXXXXX"
+         },
+         {  // Variation 3
+             "XXXXXXXXXXXXXXXXXXX",
+             "X  AAA  K   AAA   X",
+             "X XXXMM XXX XMXXX X",
+             "X   L   B   S     X",
+             "XXXXX XXXXXXX XXXXX",
+             "X  A  X  R  X  B  X",
+             "X XMXMMM XXX XMXX X",
+             "X    P      L     X",
+             "X XXXMMMXXXXX XXX X",
+             "X         A   R   X",
+             "X XXX X MMX X XXX X",
+             "X  B  X  L  X  A  X",
+             "X MMXXXXXXXXXXX X X",
+             "X    R    S   B   X",
+             "XXXXX XXX XXX XXXXX",
+             "X   X X  A  X X   X",
+             "X X XXXMXXX XXX X X",
+             "X X    L  R       X",
+             "X XMXXXXXXXXXXX X X",
+             "X   A        E    X",
+             "XXXXXXXXXXXXXXXXXXX"
+         }
+     }
+ };
+    
+ // BASE CLASS - Parent for all game objects
+
+
+    private int rowCount = 21;
+    private int columnCount = 19;
+    private int tileSize = 32;
+    private int boardWidth = columnCount * tileSize;// 19 × 32 = 608 pixels
+    private int boardHeight = rowCount * tileSize; // 21 × 32 = 672 pixels
+
+    private int currentLevel = 0;
+    private int currentMapVariation = 0;
+    private final int MAX_LEVEL = 4;
+    private boolean levelTransition = false;
+    private int transitionCountdown = 0;
+    
+    private String[] wallStyles = {"CRYSTAL", "HAZARD", "GLOW", "TECH"};
+    private String currentWallStyle = "RUST";
+    
+    private boolean previewMode = true;
+    private int previewTimer = 0;
+    private int[] previewDurations = {100, 100, 100, 90};
+    
+    private int batteryLevel = 100;
+    private int maxBattery = 100;
+    private final int BATTERY_DRAIN_RATE = 4;
+    private int batteryDrainTimer = 0;
+    private final int VISION_RADIUS = 80;
+    
+    private boolean gameStarted = false;
+    private boolean showInstructions = false;
+    private boolean gamePaused = false;
+    
+    private boolean hasKeycard = false;
+    private boolean speedBoostActive = false;
+    private int speedBoostDuration = 0;
+    
+    private HashSet<Block> walls;
+    private HashSet<Item> items;
+    private HashSet<Hazard> hazards;
+    private Robot robot;
+    private Block exit;
+
+    Timer gameLoop;
+    Timer previewTimer_obj;
+    char[] directions = {'U', 'D', 'L', 'R'};
+    Random random = new Random();
+    int score = 0;
+    boolean gameOver = false;
+    boolean levelComplete = false;
+    
+    private boolean blinkState = false;
+    private int blinkTimer = 0;
+    
+    private int menuAnimationTimer = 0;
+    private boolean titleGlitch = false;
+    private int glitchTimer = 0;
+
+    FactoryMaze() {
+        setPreferredSize(new Dimension(boardWidth, boardHeight));
+        setBackground(Color.BLACK);
+        addKeyListener(this);
+        setFocusable(true);
+
+        initializeShop();
+        showMainMenu();
+    }
+    
+    private void showMainMenu() {
+        gameStarted = false;
+        showDifficultySelect = false;
+        repaint();
+    }
+    
+    // NEW: Show difficulty selection screen
+    private void showDifficultySelection() {
+        showDifficultySelect = true;
+        repaint();
+    }
+    
+    private void showInstructions() {
+        showInstructions = true;
+        repaint();
+    }
+    
+    // MODIFIED: Handle difficulty settings
+    private void startGame() {
+        gameStarted = true;
+        showInstructions = false;
+        showDifficultySelect = false;
+        showShop = false; // ADD THIS
+        currentLevel = 0;
+        score = 0;
+        
+        // Apply max battery upgrade
+        maxBattery = 100 + (maxBatteryUpgrade * 20); // +20 per level
+        batteryLevel = maxBattery;
+        
+        hasKeycard = false;
+        gameOver = false;
+        levelComplete = false;
+        speedrunTimer = 0;
+        
+        // Apply difficulty settings
+        switch(selectedDifficulty) {
+            case PERMADEATH:
+                currentLives = 1;
+                break;
+            case NORMAL:
+            default:
+                currentLives = 3 + startingLivesUpgrade; // Apply lives upgrade
+                break;
+        }
+        
+        loadLevel();
+        
+        // Skip preview if in blackout mode
+        if (selectedDifficulty != DifficultyMode.BLACKOUT) {
+            startPreview();
+        } else {
+            previewMode = false;
+        }
+        
+        levelStartTime = 0;
+        
+        gameLoop = new Timer(50, this);
+        gameLoop.start();
+    }
+    
+    private void startPreview() {
+        previewMode = true;
+        previewTimer = previewDurations[Math.min(currentLevel, previewDurations.length - 1)];
+        
+        previewTimer_obj = new Timer(50, e -> {
+            previewTimer--;
+            if (previewTimer <= 0) {
+                previewMode = false;
+                previewTimer_obj.stop();
+            }
+            repaint();
+        });
+        previewTimer_obj.start();
+    }
+
+    // MODIFIED: Track level start time for speedrun
+    public void loadLevel() {
+        walls = new HashSet<>();
+        items = new HashSet<>();
+        hazards = new HashSet<>();
+        levelStartTime = speedrunTimer;
+        
+        // Randomly select wall style
+        String[] styles = {"STEEL", "RUST", "HAZARD", "GLOW", "TECH", "CONCRETE", "BRICK", "NEON", "CRYSTAL"};
+        currentWallStyle = styles[random.nextInt(styles.length)];
+        
+        // ADD THIS: Randomly select a map variation for this level
+        int numVariations = levelMaps[currentLevel].length;
+        currentMapVariation = random.nextInt(numVariations);
+        
+        // FIRST PASS: Create robot and walls
+        for (int r = 0; r < rowCount; r++) {
+            String row = levelMaps[currentLevel][currentMapVariation][r]; // CHANGED THIS LINE
+            for (int c = 0; c < columnCount; c++) {
+                char tile = row.charAt(c);
+                int x = c * tileSize;
+                int y = r * tileSize;
+
+                switch(tile) {
+                    case 'X':
+                        walls.add(new Block(null, x, y, tileSize, tileSize));
+                        break;
+                    case 'P':
+                        robot = new Robot(x, y, tileSize);
+                        robot.setSpeedUpgradeLevel(movementSpeedUpgrade); // ADD THIS
+                        break;
+                    case 'E':
+                        exit = new Block(null, x, y, tileSize, tileSize);
+                        break;
+                }
+            }
+        }
+        
+        // SECOND PASS: Create hazards and items (now robot exists)
+        for (int r = 0; r < rowCount; r++) {
+            String row = levelMaps[currentLevel][currentMapVariation][r]; // CHANGED THIS LINE
+            for (int c = 0; c < columnCount; c++) {
+                char tile = row.charAt(c);
+                int x = c * tileSize;
+                int y = r * tileSize;
+
+                switch(tile) {
+                    case 'A':
+                        hazards.add(new Hazard(HazardType.ACID_POOL, x, y, tileSize, robot, walls));
+                        break;
+                    case 'S':
+                        hazards.add(new Hazard(HazardType.ELECTRICAL_SPARK, x, y, tileSize, robot, walls));
+                        break;
+                    case 'L':
+                        hazards.add(new Hazard(HazardType.LASER_BARRIER, x, y, tileSize, robot, walls));
+                        break;
+                    case 'R':
+                        hazards.add(new Hazard(HazardType.PATROL_BOT, x, y, tileSize, robot, walls));
+                        break;
+                    case 'M':
+                        hazards.add(new Hazard(HazardType.MOVING_WALL, x, y, tileSize, robot, walls));
+                        break;
+                    case 'B':
+                        items.add(new Item(ItemType.BATTERY, x, y, tileSize));
+                        break;
+                    case 'K':
+                        items.add(new Item(ItemType.KEYCARD, x, y, tileSize));
+                        break;
+                }
+            }
+        }
+    }
+
+    // MODIFIED: Handle difficulty select screen
+    public void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        Graphics2D g2 = (Graphics2D)g;
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        
+        if (!gameStarted) {
+            if (showShop) {  // ADD THIS
+                drawShop(g2);
+                return;
+            }
+            if (showDifficultySelect) {
+                drawDifficultySelection(g2);
+            } else {
+                drawMainMenu(g2);
+            }
+            return;
+        }
+        
+        if (showInstructions) {
+            drawInstructions(g2);
+            return;
+        }
+        
+        blinkTimer++;
+        if (blinkTimer >= 10) {
+            blinkState = !blinkState;
+            blinkTimer = 0;
+        }
+        
+        g2.setColor(new Color(20, 20, 30));
+        g2.fillRect(0, 0, boardWidth, boardHeight);
+        
+        if (previewMode) {
+            drawAllElements(g2, false);
+            
+            g2.setColor(new Color(255, 255, 0, 200));
+            g2.setFont(new Font("Trebuchet MS", Font.BOLD, 24));
+            String previewText = "Memory Preview: " + (previewTimer / 20 + 1) + "s";
+            int textWidth = g2.getFontMetrics().stringWidth(previewText);
+            g2.fillRoundRect((boardWidth - textWidth) / 2 - 10, 115, textWidth + 20, 35, 10, 10);
+            g2.setColor(Color.BLACK);
+            g2.drawString(previewText, (boardWidth - textWidth) / 2, 140);
+        } else {
+            drawAllElements(g2, true);
+        }
+        
+        drawHUD(g2);
+        
+        if (levelComplete) {
+            drawLevelComplete(g2);
+        }
+        
+        if (gameOver) {
+            drawGameOver(g2);
+        }
+        
+        if (gamePaused) {
+            drawPauseMenu(g2);
+        }
+    }
+    
+    private void drawShop(Graphics2D g2) {
+        g2.setColor(new Color(15, 20, 25));
+        g2.fillRect(0, 0, boardWidth, boardHeight);
+        
+        // Grid background
+        g2.setColor(new Color(30, 35, 40));
+        for (int x = 0; x < boardWidth; x += 40) {
+            g2.drawLine(x, 0, x, boardHeight);
+        }
+        for (int y = 0; y < boardHeight; y += 40) {
+            g2.drawLine(0, y, boardWidth, y);
+        }
+        
+        // Title
+        g2.setColor(new Color(255, 200, 0));
+        g2.setFont(new Font("Courier New", Font.BOLD, 32));
+        String title = "UPGRADE SHOP";
+        int titleWidth = g2.getFontMetrics().stringWidth(title);
+        g2.drawString(title, (boardWidth - titleWidth) / 2, 50);
+        
+        // Points display
+        g2.setFont(new Font("Courier New", Font.BOLD, 20));
+        g2.setColor(new Color(0, 255, 100));
+        String pointsText = "Available Points: " + totalPoints;
+        int pointsWidth = g2.getFontMetrics().stringWidth(pointsText);
+        g2.drawString(pointsText, (boardWidth - pointsWidth) / 2, 80);
+        
+        // Shop items
+        int yPos = 120;
+        int spacing = 95;
+        
+        for (int i = 0; i < shopItems.length; i++) {
+            ShopItem item = shopItems[i];
+            boolean isSelected = (i == shopSelectedIndex);
+            
+            // Item box
+            Color boxColor = isSelected ? new Color(0, 150, 255, 100) : new Color(50, 50, 60, 150);
+            g2.setColor(boxColor);
+            g2.fillRoundRect(40, yPos - 25, boardWidth - 80, 85, 15, 15);
+            
+            // Selection border
+            if (isSelected) {
+                g2.setColor(new Color(0, 200, 255));
+                g2.setStroke(new BasicStroke(3));
+                g2.drawRoundRect(40, yPos - 25, boardWidth - 80, 85, 15, 15);
+                g2.setStroke(new BasicStroke(1));
+            }
+            
+            // Item name
+            g2.setFont(new Font("Courier New", Font.BOLD, 18));
+            Color nameColor = item.isMaxed() ? new Color(100, 255, 100) : new Color(255, 200, 0);
+            g2.setColor(nameColor);
+            g2.drawString(item.name + item.getDisplayInfo(), 60, yPos);
+            
+            // Item description
+            g2.setFont(new Font("Courier New", Font.PLAIN, 14));
+            g2.setColor(new Color(200, 200, 200));
+            g2.drawString(item.description, 60, yPos + 20);
+            
+            // Cost/Status
+            g2.setFont(new Font("Courier New", Font.BOLD, 16));
+            if (item.isMaxed()) {
+                g2.setColor(new Color(100, 255, 100));
+                g2.drawString("MAXED OUT", 60, yPos + 45);
+            } else {
+                g2.setColor(totalPoints >= item.getCost() ? new Color(0, 255, 100) : new Color(255, 100, 100));
+                g2.drawString("Cost: " + item.getCost() + " pts", 60, yPos + 45);
+            }
+            
+            yPos += spacing;
+        }
+        
+        // Instructions
+        g2.setFont(new Font("Courier New", Font.BOLD, 16));
+        g2.setColor(new Color(0, 255, 100));
+        String instructions = "↑↓ - Select    SPACE - Purchase    ESC - Back";
+        int instrWidth = g2.getFontMetrics().stringWidth(instructions);
+        g2.drawString(instructions, (boardWidth - instrWidth) / 2, boardHeight - 30);
+    }
+    
+    // MODIFIED: Added difficulty button
+    private void drawMainMenu(Graphics2D g2) {
+        menuAnimationTimer++;
+        glitchTimer++;
+        
+        if (glitchTimer >= 150) {
+            titleGlitch = true;
+            if (glitchTimer >= 160) {
+                titleGlitch = false;
+                glitchTimer = 0;
+            }
+        }
+        
+        g2.setColor(new Color(15, 20, 25));
+        g2.fillRect(0, 0, boardWidth, boardHeight);
+        
+        g2.setColor(new Color(30, 35, 40));
+        for (int x = 0; x < boardWidth; x += 40) {
+            g2.drawLine(x, 0, x, boardHeight);
+        }
+        for (int y = 0; y < boardHeight; y += 40) {
+            g2.drawLine(0, y, boardWidth, y);
+        }
+        
+        int scanlineY = (menuAnimationTimer * 3) % boardHeight;
+        g2.setColor(new Color(0, 150, 200, 50));
+        g2.fillRect(0, scanlineY, boardWidth, 2);
+        
+        g2.setFont(new Font("Courier New", Font.BOLD, 48));
+        String title = "FACTORY OUTAGE";
+        int titleWidth = g2.getFontMetrics().stringWidth(title);
+        int titleX = (boardWidth - titleWidth) / 2;
+        
+        if (titleGlitch) {
+            g2.setColor(new Color(255, 0, 0, 150));
+            g2.drawString(title, titleX - 2, 120);
+            g2.setColor(new Color(0, 255, 255, 150));
+            g2.drawString(title, titleX + 2, 120);
+        }
+        
+        g2.setColor(new Color(255, 120, 0));
+        g2.drawString(title, titleX, 120);
+        
+        g2.setFont(new Font("Courier New", Font.ITALIC, 20));
+        g2.setColor(new Color(100, 200, 255));
+        String subtitle = "Memory Escape Protocol";
+        int subtitleWidth = g2.getFontMetrics().stringWidth(subtitle);
+        g2.drawString(subtitle, (boardWidth - subtitleWidth) / 2, 150);
+        
+        g2.setFont(new Font("Courier New", Font.BOLD, 14));
+        boolean warningBlink = (menuAnimationTimer / 15) % 2 == 0;
+        if (warningBlink) {
+            g2.setColor(new Color(255, 50, 50));
+            String warning = "⚠ POWER GRID FAILURE ⚠";
+            int warningWidth = g2.getFontMetrics().stringWidth(warning);
+            g2.drawString(warning, (boardWidth - warningWidth) / 2, 180);
+        }
+        
+        int robotX = boardWidth / 2 - 25;
+        int robotY = 200 + (int)(Math.sin(menuAnimationTimer * 0.1) * 3);
+        
+        g2.setColor(new Color(80, 120, 180));
+        g2.fillRoundRect(robotX, robotY, 50, 50, 10, 10);
+        
+        boolean eyeBlink = (menuAnimationTimer / 30) % 10 == 0;
+        g2.setColor(eyeBlink ? new Color(100, 100, 100) : new Color(0, 255, 150));
+        g2.fillOval(robotX + 10, robotY + 15, 8, 8);
+        g2.fillOval(robotX + 32, robotY + 15, 8, 8);
+        
+        g2.setColor(new Color(255, 200, 0));
+        g2.fillRect(robotX + 15, robotY + 35, 20, 4);
+        
+        g2.setColor(new Color(40, 40, 50));
+        g2.fillRoundRect(robotX + 10, robotY + 60, 30, 8, 4, 4);
+        
+        int batteryWidth = (int)(25 * (0.5 + 0.5 * Math.sin(menuAnimationTimer * 0.05)));
+        g2.setColor(batteryWidth > 15 ? new Color(0, 255, 0) : new Color(255, 255, 0));
+        g2.fillRoundRect(robotX + 12, robotY + 62, batteryWidth, 4, 2, 2);
+        
+        g2.setFont(new Font("Courier New", Font.BOLD, 16));
+        
+        g2.setColor(new Color(0, 255, 100));
+        g2.fillRoundRect((boardWidth - 280) / 2, 320, 280, 35, 8, 8);
+        g2.setColor(new Color(0, 0, 0));
+        g2.drawString("► INITIATE ESCAPE SEQUENCE", (boardWidth - 260) / 2, 342);
+        
+        // NEW: Difficulty selection button
+        g2.setColor(new Color(255, 200, 0));
+        g2.fillRoundRect((boardWidth - 280) / 2, 365, 280, 35, 8, 8);
+        g2.setColor(new Color(0, 0, 0));
+        String diffText = "► DIFFICULTY: " + selectedDifficulty.name.toUpperCase();
+        g2.drawString(diffText, (boardWidth - 260) / 2, 387);
+        
+        g2.setColor(new Color(100, 150, 255));
+        g2.fillRoundRect((boardWidth - 280) / 2, 410, 280, 35, 8, 8);
+        g2.setColor(new Color(0, 0, 0));
+        g2.drawString("► SYSTEM PROTOCOLS", (boardWidth - 200) / 2, 432);
+        
+        g2.setColor(new Color(0, 200, 150));
+        g2.fillRoundRect((boardWidth - 280) / 2, 455, 280, 35, 8, 8);
+        g2.setColor(new Color(0, 0, 0));
+        g2.drawString("► UPGRADE SHOP", (boardWidth - 180) / 2, 477);
+
+        g2.setColor(new Color(255, 100, 100));
+        g2.fillRoundRect((boardWidth - 280) / 2, 500, 280, 35, 8, 8);
+        g2.setColor(new Color(0, 0, 0));
+        g2.drawString("► EMERGENCY SHUTDOWN", (boardWidth - 220) / 2, 522);
+        
+        g2.setColor(new Color(255, 100, 100));
+        g2.fillRoundRect((boardWidth - 280) / 2, 455, 280, 35, 8, 8);
+        g2.setColor(new Color(0, 0, 0));
+        g2.drawString("► EMERGENCY SHUTDOWN", (boardWidth - 220) / 2, 477);
+        
+        g2.setFont(new Font("Courier New", Font.PLAIN, 12));
+        g2.setColor(new Color(150, 150, 150));
+        g2.drawString("SPACE - Start Game", 50, boardHeight - 100);
+        g2.drawString("D - Select Difficulty", 50, boardHeight - 80);
+        g2.drawString("U - Upgrade Shop", 50, boardHeight - 60);  // ADD THIS
+        g2.drawString("I - Instructions", 50, boardHeight - 40);
+        g2.drawString("ESC - Exit", 50, boardHeight - 20);
+        
+        g2.setColor(new Color(0, 255, 200));
+        g2.drawString("TERMINAL STATUS: ONLINE", boardWidth - 200, boardHeight - 40);
+        g2.setColor(new Color(255, 200, 0));
+        g2.drawString("POWER: CRITICAL", boardWidth - 200, boardHeight - 20);
+    }
+    
+    private void showShop() {
+        showShop = true;
+        shopSelectedIndex = 0;
+        initializeShop(); // Refresh shop items
+        repaint();
+    }
+
+    private void purchaseUpgrade() {
+        if (shopSelectedIndex < 0 || shopSelectedIndex >= shopItems.length) return;
+        
+        ShopItem item = shopItems[shopSelectedIndex];
+        
+        if (item.isMaxed()) {
+            return; // Already maxed
+        }
+        
+        if (totalPoints >= item.getCost()) {
+            totalPoints -= item.getCost();
+            item.currentLevel++;
+            
+            // Apply upgrade
+            switch(item.stat) {
+                case "DRAIN":
+                    batteryDrainUpgrade = item.currentLevel;
+                    break;
+                case "VISION":
+                    visionRangeUpgrade = item.currentLevel;
+                    break;
+                case "SPEED":
+                    movementSpeedUpgrade = item.currentLevel;
+                    break;
+                case "CAPACITY":
+                    maxBatteryUpgrade = item.currentLevel;
+                    break;
+                case "LIVES":
+                    startingLivesUpgrade = item.currentLevel;
+                    break;
+            }
+            
+            repaint();
+        }
+    }
+    // NEW: Draw difficulty selection screen
+    private void drawDifficultySelection(Graphics2D g2) {
+        g2.setColor(new Color(15, 20, 25));
+        g2.fillRect(0, 0, boardWidth, boardHeight);
+        
+        g2.setColor(new Color(30, 35, 40));
+        for (int x = 0; x < boardWidth; x += 40) {
+            g2.drawLine(x, 0, x, boardHeight);
+        }
+        for (int y = 0; y < boardHeight; y += 40) {
+            g2.drawLine(0, y, boardWidth, y);
+        }
+        
+        g2.setColor(new Color(255, 120, 0));
+        g2.setFont(new Font("Courier New", Font.BOLD, 32));
+        String title = "SELECT DIFFICULTY";
+        int titleWidth = g2.getFontMetrics().stringWidth(title);
+        g2.drawString(title, (boardWidth - titleWidth) / 2, 60);
+        
+        int yPos = 120;
+        int spacing = 100;
+        
+        for (DifficultyMode mode : DifficultyMode.values()) {
+            boolean isSelected = (mode == selectedDifficulty);
+            
+            Color boxColor = isSelected ? new Color(0, 150, 255, 100) : new Color(50, 50, 60, 150);
+            g2.setColor(boxColor);
+            g2.fillRoundRect(50, yPos - 30, boardWidth - 100, 80, 15, 15);
+            
+            if (isSelected) {
+                g2.setColor(new Color(0, 200, 255));
+                g2.setStroke(new BasicStroke(3));
+                g2.drawRoundRect(50, yPos - 30, boardWidth - 100, 80, 15, 15);
+                g2.setStroke(new BasicStroke(1));
+            }
+            
+            g2.setFont(new Font("Courier New", Font.BOLD, 20));
+            Color textColor = getDifficultyColor(mode);
+            g2.setColor(textColor);
+            g2.drawString(mode.name, 70, yPos);
+            
+            g2.setFont(new Font("Courier New", Font.PLAIN, 14));
+            g2.setColor(new Color(200, 200, 200));
+            g2.drawString(mode.description, 70, yPos + 25);
+            
+            yPos += spacing;
+        }
+        
+        g2.setFont(new Font("Courier New", Font.BOLD, 16));
+        g2.setColor(new Color(0, 255, 100));
+        g2.drawString("↑↓ - Select    SPACE - Confirm    ESC - Back", 60, boardHeight - 30);
+    }
+    
+    
+    
+    // NEW: Get color for each difficulty
+    private Color getDifficultyColor(DifficultyMode mode) {
+        switch(mode) {
+            case NORMAL: return new Color(100, 255, 100);
+            case PERMADEATH: return new Color(255, 100, 100);
+            case BLACKOUT: return new Color(150, 100, 255);
+            case SPEEDRUN: return new Color(255, 200, 0);
+            default: return Color.WHITE;
+        }
+    }
+    
+    private void drawInstructions(Graphics2D g2) {
+        g2.setColor(new Color(15, 20, 25));
+        g2.fillRect(0, 0, boardWidth, boardHeight);
+        
+        g2.setColor(new Color(30, 35, 40));
+        for (int x = 0; x < boardWidth; x += 40) {
+            g2.drawLine(x, 0, x, boardHeight);
+        }
+        for (int y = 0; y < boardHeight; y += 40) {
+            g2.drawLine(0, y, boardWidth, y);
+        }
+        
+        g2.setColor(new Color(255, 120, 0));
+        g2.setFont(new Font("Courier New", Font.BOLD, 28));
+        String title = "SYSTEM PROTOCOLS";
+        int titleWidth = g2.getFontMetrics().stringWidth(title);
+        g2.drawString(title, (boardWidth - titleWidth) / 2, 50);
+        
+        g2.setFont(new Font("Courier New", Font.BOLD, 16));
+        
+        g2.setColor(new Color(0, 255, 100));
+        g2.drawString("MISSION BRIEFING:", 50, 90);
+        g2.setFont(new Font("Courier New", Font.PLAIN, 14));
+        g2.setColor(new Color(200, 200, 200));
+        String[] mission = {
+            "• Factory power grid compromised",
+            "• Navigate through industrial sectors",
+            "• Memory Preview: Brief map visibility",
+            "• Limited battery flashlight system",
+            "• Reach emergency exits to escape"
+        };
+        for (int i = 0; i < mission.length; i++) {
+            g2.drawString(mission[i], 70, 110 + i * 20);
+        }
+        
+        g2.setFont(new Font("Courier New", Font.BOLD, 16));
+        g2.setColor(new Color(255, 100, 100));
+        g2.drawString("HAZARD PROTOCOLS:", 50, 230);
+        g2.setFont(new Font("Courier New", Font.PLAIN, 14));
+        g2.setColor(new Color(255, 100, 100));
+        g2.drawString("• Acid Pools (A): Corrosive waste", 70, 250);
+        g2.setColor(new Color(255, 255, 100));
+        g2.drawString("• Electrical Sparks (S): Power surges", 70, 270);
+        g2.setColor(new Color(255, 100, 255));
+        g2.drawString("• Laser Barriers (L): Security systems", 70, 290);
+        g2.setColor(new Color(255, 150, 100));
+        g2.drawString("• Patrol Bots (R): Automated security", 70, 310);
+        
+        g2.setFont(new Font("Courier New", Font.BOLD, 16));
+        g2.setColor(new Color(100, 200, 255));
+        g2.drawString("RESOURCE MANAGEMENT:", 50, 350);
+        g2.setFont(new Font("Courier New", Font.PLAIN, 14));
+        g2.setColor(new Color(255, 255, 100));
+        g2.drawString("• Batteries (B): Power restoration", 70, 370);
+        g2.setColor(new Color(100, 255, 100));
+        g2.drawString("• Keycards (K): Access control", 70, 390);
+        g2.setColor(new Color(100, 255, 255));
+        g2.drawString("• Speed Boost (S): Enhanced mobility", 70, 410);
+        
+        g2.setFont(new Font("Courier New", Font.BOLD, 16));
+        g2.setColor(new Color(200, 200, 255));
+        g2.drawString("CONTROL INTERFACE:", 50, 450);
+        g2.setFont(new Font("Courier New", Font.PLAIN, 14));
+        g2.setColor(new Color(200, 200, 200));
+        g2.drawString("• Arrow Keys / WASD: Movement", 70, 470);
+        g2.drawString("• P: Pause System", 70, 490);
+        g2.drawString("• R: System Restart", 70, 510);
+        g2.drawString("• ESC: Emergency Exit", 70, 530);
+        
+        g2.setFont(new Font("Courier New", Font.BOLD, 16));
+        g2.setColor(new Color(0, 255, 100));
+        String returnText = "SPACE - Return to Main Terminal";
+        int returnWidth = g2.getFontMetrics().stringWidth(returnText);
+        g2.drawString(returnText, (boardWidth - returnWidth) / 2, boardHeight - 30);
+    }
+    
+
+        private void drawAllElements(Graphics2D g2, boolean limitedVision) {
+            Shape originalClip = null;
+            if (limitedVision && batteryLevel > 0) {
+                originalClip = g2.getClip();
+                int baseVision = VISION_RADIUS + (visionRangeUpgrade * 15); // +15 per level
+                int visionRadius = (int)(baseVision * (batteryLevel / 100.0));
+                g2.setClip(new java.awt.geom.Ellipse2D.Float(
+                    robot.x + robot.width/2 - visionRadius,
+                    robot.y + robot.height/2 - visionRadius,
+                    visionRadius * 2,
+                    visionRadius * 2
+                ));
+            }
+            
+            for (Block wall : walls) {
+                String currentStyle = wallStyles[currentLevel]; // Use level-based style
+                switch (currentStyle) {
+                    case "STEEL":
+                        GradientPaint steel = new GradientPaint(
+                            wall.x, wall.y, new Color(60, 60, 65),
+                            wall.x + wall.width, wall.y + wall.height, new Color(120, 120, 130)
+                        );
+                        g2.setPaint(steel);
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        g2.setColor(Color.DARK_GRAY);
+                        g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
+                        break;
+
+                    case "HAZARD":
+                        g2.setColor(new Color(30, 30, 30));
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        g2.setColor(new Color(255, 200, 0));
+                        g2.setStroke(new BasicStroke(3));
+                        g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
+                        g2.setStroke(new BasicStroke(1));
+                        break;
+
+                    case "GLOW":
+                        g2.setColor(new Color(10, 10, 30));
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        g2.setColor(new Color(0, 200, 255));
+                        g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
+                        g2.setColor(new Color(0, 120, 200));
+                        g2.drawRect(wall.x + 1, wall.y + 1, wall.width - 3, wall.height - 3);
+                        break;
+
+                    case "RUST":
+                        GradientPaint rust = new GradientPaint(
+                            wall.x, wall.y, new Color(90, 45, 30),
+                            wall.x, wall.y + wall.height, new Color(140, 70, 50)
+                        );
+                        g2.setPaint(rust);
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        g2.setColor(new Color(60, 30, 20));
+                        g2.drawLine(wall.x + 2, wall.y + 2, wall.x + wall.width - 2, wall.y + wall.height - 2);
+                        g2.setColor(Color.BLACK);
+                        g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
+                        break;
+                        
+                    // NEW STYLES BELOW:
+                    
+                    case "CONCRETE":
+                        g2.setColor(new Color(80, 80, 85));
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        // Add concrete texture with random dots
+                        g2.setColor(new Color(60, 60, 65));
+                        for (int i = 0; i < 5; i++) {
+                            int dotX = wall.x + (int)(Math.random() * wall.width);
+                            int dotY = wall.y + (int)(Math.random() * wall.height);
+                            g2.fillRect(dotX, dotY, 1, 1);
+                        }
+                        g2.setColor(new Color(50, 50, 55));
+                        g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
+                        break;
+                        
+                    case "BRICK":
+                        // Red brick background
+                        g2.setColor(new Color(120, 40, 40));
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        // Draw brick pattern
+                        g2.setColor(new Color(90, 30, 30));
+                        g2.drawLine(wall.x, wall.y + wall.height/2, wall.x + wall.width, wall.y + wall.height/2);
+                        g2.drawLine(wall.x + wall.width/2, wall.y, wall.x + wall.width/2, wall.y + wall.height/2);
+                        g2.drawLine(wall.x + wall.width/4, wall.y + wall.height/2, wall.x + wall.width/4, wall.y + wall.height);
+                        g2.drawLine(wall.x + 3*wall.width/4, wall.y + wall.height/2, wall.x + 3*wall.width/4, wall.y + wall.height);
+                        // Mortar lines
+                        g2.setColor(new Color(160, 160, 160));
+                        g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
+                        break;
+                        
+                    case "TECH":
+                        // Futuristic tech panels
+                        GradientPaint tech = new GradientPaint(
+                            wall.x, wall.y, new Color(20, 30, 50),
+                            wall.x, wall.y + wall.height, new Color(40, 60, 90)
+                        );
+                        g2.setPaint(tech);
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        // Circuit lines
+                        g2.setColor(new Color(0, 150, 255, 150));
+                        g2.drawLine(wall.x + 4, wall.y + 4, wall.x + wall.width - 4, wall.y + 4);
+                        g2.drawLine(wall.x + 4, wall.y + wall.height - 4, wall.x + wall.width - 4, wall.y + wall.height - 4);
+                        g2.setColor(new Color(0, 200, 255));
+                        g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
+                        break;
+                        
+                    case "CAUTION":
+                        // Yellow and black warning stripes
+                        g2.setColor(new Color(40, 40, 40));
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        g2.setColor(new Color(255, 200, 0));
+                        // Diagonal stripes
+                        for (int i = -wall.height; i < wall.width; i += 8) {
+                            int x1 = wall.x + i;
+                            int y1 = wall.y;
+                            int x2 = wall.x + i + wall.height;
+                            int y2 = wall.y + wall.height;
+                            g2.setStroke(new BasicStroke(4));
+                            g2.drawLine(x1, y1, x2, y2);
+                        }
+                        g2.setStroke(new BasicStroke(1));
+                        break;
+                        
+                    case "ICE":
+                        // Frozen/ice walls
+                        GradientPaint ice = new GradientPaint(
+                            wall.x, wall.y, new Color(200, 220, 255),
+                            wall.x + wall.width, wall.y + wall.height, new Color(150, 180, 230)
+                        );
+                        g2.setPaint(ice);
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        // Ice crystals
+                        g2.setColor(new Color(255, 255, 255, 100));
+                        g2.drawLine(wall.x + 5, wall.y + 5, wall.x + 10, wall.y + 10);
+                        g2.drawLine(wall.x + wall.width - 10, wall.y + 5, wall.x + wall.width - 5, wall.y + 10);
+                        g2.setColor(new Color(180, 200, 255));
+                        g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
+                        break;
+                        
+                    case "LAVA":
+                        // Lava/volcanic rock
+                        GradientPaint lava = new GradientPaint(
+                            wall.x, wall.y, new Color(60, 20, 10),
+                            wall.x, wall.y + wall.height, new Color(40, 10, 5)
+                        );
+                        g2.setPaint(lava);
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        // Glowing cracks
+                        g2.setColor(new Color(255, 100, 0, 150));
+                        g2.drawLine(wall.x + 3, wall.y + wall.height/2, wall.x + wall.width - 3, wall.y + wall.height/2);
+                        g2.setColor(new Color(255, 50, 0));
+                        g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
+                        break;
+                        
+                    case "NEON":
+                        // Cyberpunk neon style
+                        g2.setColor(new Color(10, 10, 15));
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        // Pulsing neon effect (based on timer)
+                        int brightness = 150 + (int)(50 * Math.sin(System.currentTimeMillis() / 200.0));
+                        g2.setColor(new Color(255, 0, brightness, 200));
+                        g2.setStroke(new BasicStroke(2));
+                        g2.drawRect(wall.x + 2, wall.y + 2, wall.width - 5, wall.height - 5);
+                        g2.setStroke(new BasicStroke(1));
+                        break;
+                        
+                    case "WOOD":
+                        // Wooden planks
+                        g2.setColor(new Color(100, 60, 30));
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        // Wood grain
+                        g2.setColor(new Color(80, 50, 25));
+                        g2.drawLine(wall.x + 2, wall.y, wall.x + 2, wall.y + wall.height);
+                        g2.drawLine(wall.x + wall.width - 3, wall.y, wall.x + wall.width - 3, wall.y + wall.height);
+                        g2.setColor(new Color(70, 40, 20));
+                        g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
+                        break;
+                        
+                    case "CRYSTAL":
+                        // Crystal/gem walls
+                        GradientPaint crystal = new GradientPaint(
+                            wall.x, wall.y, new Color(150, 100, 200),
+                            wall.x + wall.width, wall.y + wall.height, new Color(100, 50, 150)
+                        );
+                        g2.setPaint(crystal);
+                        g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                        // Crystal facets
+                        g2.setColor(new Color(200, 150, 255, 100));
+                        g2.drawLine(wall.x, wall.y, wall.x + wall.width, wall.y + wall.height);
+                        g2.drawLine(wall.x + wall.width, wall.y, wall.x, wall.y + wall.height);
+                        g2.setColor(new Color(180, 120, 220));
+                        g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
+                        break;
+                }
+            }
+            
+
+        g2.setColor(hasKeycard ? Color.GREEN : Color.RED);
+        g2.fillRect(exit.x + 4, exit.y + 4, exit.width - 8, exit.height - 8);
+        g2.setColor(Color.WHITE);
+        g2.drawString("EXIT", exit.x + 2, exit.y + 20);
+        
+        for (Item item : items) {
+            if (!item.collected && blinkState) {
+                g2.setColor(item.getColor());
+                g2.fillOval(item.x + tileSize/4, item.y + tileSize/4, item.width, item.height);
+                g2.setColor(Color.WHITE);
+                g2.setFont(new Font("DialogInput", Font.BOLD, 12));
+                g2.drawString(item.getSymbol(), item.x + tileSize/2 - 4, item.y + tileSize/2 + 4);
+            }
+        }
+        
+     // POLYMORPHISM IN ACTION! Each hazard draws itself
+        for (Hazard hazard : hazards) {
+            hazard.draw(g2);  // ← Calls the appropriate draw() method for each hazard type
+        }
+        
+     // POLYMORPHISM! Robot draws itself
+        robot.draw(g2);
+        
+        if (limitedVision && originalClip != null) {
+            g2.setClip(originalClip);
+        }
+    }
+    
+    // MODIFIED: Added difficulty indicators and speedrun timer
+    private void drawHUD(Graphics2D g2) {
+        g2.setColor(new Color(0, 0, 0, 180));
+        g2.fillRoundRect(10, 10, 350, 90, 15, 15);
+        
+        g2.setFont(new Font("DialogInput", Font.BOLD, 16));
+        g2.setColor(Color.WHITE);
+        g2.drawString("Level: " + (currentLevel + 1) + "/4", 20, 30);
+        g2.drawString("Score: " + score, 20, 50);
+        
+        g2.setColor(getDifficultyColor(selectedDifficulty));
+        g2.drawString(selectedDifficulty.name, 20, 70);
+        
+        g2.setColor(Color.WHITE);
+        g2.drawString("Battery:", 150, 30);
+        g2.setColor(batteryLevel > 20 ? Color.GREEN : Color.RED);
+        g2.fillRect(220, 20, (int)(batteryLevel * 1.2), 12);
+        g2.setColor(Color.WHITE);
+        g2.drawRect(220, 20, 120, 12);
+        g2.drawString(batteryLevel + "%", 220, 50);
+        
+        if (selectedDifficulty == DifficultyMode.PERMADEATH) {
+            g2.setColor(Color.RED);
+            g2.drawString("Lives: " + currentLives, 150, 70);
+        }
+        
+        if (selectedDifficulty == DifficultyMode.SPEEDRUN) {
+            int levelTime = speedrunTimer - levelStartTime;
+            int targetTime = speedrunTargets[currentLevel];
+            int seconds = levelTime / 20;
+            int targetSeconds = targetTime / 20;
+            
+            g2.setColor(levelTime < targetTime ? Color.GREEN : Color.RED);
+            g2.drawString("Time: " + seconds + "s / " + targetSeconds + "s", 150, 70);
+        }
+        
+        if (hasKeycard) {
+            g2.setColor(Color.GREEN);
+            g2.drawString("KEYCARD ✓", 280, 90);
+        }
+        
+        if (speedBoostActive) {
+            g2.setColor(Color.CYAN);
+            g2.drawString("SPEED: " + (speedBoostDuration / 20) + "s", 150, 90);
+        }
+    }
+    
+    private void drawLevelComplete(Graphics2D g2) {
+        g2.setColor(new Color(0, 0, 0, 150));
+        g2.fillRect(0, 0, boardWidth, boardHeight);
+        
+        g2.setColor(Color.GREEN);
+        g2.setFont(new Font("DialogInput", Font.BOLD, 36));
+        String text = "LEVEL COMPLETE!";
+        int textWidth = g2.getFontMetrics().stringWidth(text);
+        g2.drawString(text, (boardWidth - textWidth) / 2, boardHeight / 2);
+        
+        g2.setColor(Color.WHITE);
+        g2.setFont(new Font("DialogInput", Font.PLAIN, 18));
+        String continueText = "Press SPACE to continue";
+        int continueWidth = g2.getFontMetrics().stringWidth(continueText);
+        g2.drawString(continueText, (boardWidth - continueWidth) / 2, boardHeight / 2 + 40);
+    }
+    
+    private void drawGameOver(Graphics2D g2) {
+        // Add score to total points when game ends
+        if (!gameOver) { // Only add once
+            totalPoints += score;
+        }
+        
+        g2.setColor(new Color(0, 0, 0, 180));
+        g2.fillRect(0, 0, boardWidth, boardHeight);
+        
+        String message = (currentLevel >= MAX_LEVEL - 1) ? "FACTORY ESCAPED!" : "SYSTEM FAILURE";
+        Color textColor = (currentLevel >= MAX_LEVEL - 1) ? Color.GREEN : Color.RED;
+        
+        g2.setColor(textColor);
+        g2.setFont(new Font("DialogInput", Font.BOLD, 36));
+        int textWidth = g2.getFontMetrics().stringWidth(message);
+        g2.drawString(message, (boardWidth - textWidth) / 2, boardHeight / 2 - 40);
+        
+        g2.setColor(Color.WHITE);
+        g2.setFont(new Font("DialogInput", Font.PLAIN, 18));
+        g2.drawString("Final Score: " + score, (boardWidth - 120) / 2, boardHeight / 2);
+        
+        // Show points earned
+        g2.setColor(new Color(0, 255, 100));
+        g2.drawString("Points Earned: " + score, (boardWidth - 160) / 2, boardHeight / 2 + 30);
+        g2.drawString("Total Points: " + totalPoints, (boardWidth - 150) / 2, boardHeight / 2 + 55);
+        
+        g2.setColor(Color.WHITE);
+        g2.drawString("Press R to Restart", (boardWidth - 150) / 2, boardHeight / 2 + 90);
+    }
+    
+    private void drawPauseMenu(Graphics2D g2) {
+        g2.setColor(new Color(0, 0, 0, 150));
+        g2.fillRect(0, 0, boardWidth, boardHeight);
+        
+        g2.setColor(Color.YELLOW);
+        g2.setFont(new Font("DialogInput", Font.BOLD, 36));
+        String text = "PAUSED";
+        int textWidth = g2.getFontMetrics().stringWidth(text);
+        g2.drawString(text, (boardWidth - textWidth) / 2, boardHeight / 2);
+        
+        g2.setColor(Color.WHITE);
+        g2.setFont(new Font("DialogInput", Font.PLAIN, 18));
+        g2.drawString("Press P to Resume", (boardWidth - 150) / 2, boardHeight / 2 + 40);
+    }
+
+    // MODIFIED: Added speedrun timer and death handling
+    public void update() {
+        if (gamePaused || gameOver || levelComplete || !gameStarted) return;
+        
+        if (selectedDifficulty == DifficultyMode.SPEEDRUN) {
+            speedrunTimer++;
+        }
+        
+        batteryDrainTimer++;
+        if (batteryDrainTimer >= 40 && !previewMode) {
+            int drainRate = Math.max(1, BATTERY_DRAIN_RATE - batteryDrainUpgrade); // Reduce drain
+            batteryLevel = Math.max(0, batteryLevel - drainRate);
+            batteryDrainTimer = 0;
+            
+            if (batteryLevel <= 0) {
+                handleDeath();
+                return;
+            }
+        }
+        
+        if (speedBoostActive) {
+            speedBoostDuration--;
+            if (speedBoostDuration <= 0) {
+                speedBoostActive = false;
+            }
+        }
+        
+        robot.setSpeedBoostActive(speedBoostActive);
+        
+        for (Hazard hazard : hazards) {
+            hazard.update();
+            
+            if (collision(robot, hazard) && hazard.active) {
+                if (hazard.type == HazardType.PATROL_BOT || 
+                    hazard.type == HazardType.ACID_POOL ||
+                    (hazard.type == HazardType.ELECTRICAL_SPARK && hazard.active) ||
+                    (hazard.type == HazardType.LASER_BARRIER && hazard.active)) {
+                    
+                    batteryLevel = Math.max(0, batteryLevel - 20);
+                    if (batteryLevel <= 0) {
+                        handleDeath();
+                        return;
+                    }
+                    
+                    robot.x -= robot.velocityX * 2;
+                    robot.y -= robot.velocityY * 2;
+                }
+            }
+        }
+        
+        ArrayList<Item> itemsToRemove = new ArrayList<>();
+        for (Item item : items) {
+            if (!item.collected && collision(robot, item)) {
+                item.collected = true;
+                itemsToRemove.add(item);
+                
+                switch(item.type) {
+                    case BATTERY:
+                        batteryLevel = Math.min(maxBattery, batteryLevel + 30);
+                        score += 50;
+                        break;
+                    case KEYCARD:
+                        hasKeycard = true;
+                        score += 100;
+                        break;
+                    case SPEED_BOOST:
+                        speedBoostActive = true;
+                        speedBoostDuration = 200;
+                        score += 75;
+                        break;
+                }
+            }
+        }
+        items.removeAll(itemsToRemove);
+        
+        if (collision(robot, exit)) {
+            if (hasKeycard || currentLevel < 2) {
+                levelComplete = true;
+                score += 200 + batteryLevel;
+            }
+        }
+    }
+    
+    // NEW: Handle death based on difficulty
+    private void handleDeath() {
+        currentLives--;
+        
+        if (selectedDifficulty == DifficultyMode.PERMADEATH || currentLives <= 0) {
+            gameOver = true;
+        } else {
+            batteryLevel = maxBattery;
+            hasKeycard = false;
+            speedBoostActive = false;
+            loadLevel();
+            
+            if (selectedDifficulty != DifficultyMode.BLACKOUT) {
+                startPreview();
+            }
+        }
+    }
+    
+    private boolean collision(Robot r, Block b) {
+        return r.x < b.x + b.width &&
+               r.x + r.width > b.x &&
+               r.y < b.y + b.height &&
+               r.y + r.height > b.y;
+    }
+    
+    private boolean collision(Robot r, Item i) {
+        return r.x < i.x + i.width + tileSize/4 &&
+               r.x + r.width > i.x + tileSize/4 &&
+               r.y < i.y + i.height + tileSize/4 &&
+               r.y + r.height > i.y + tileSize/4;
+    }
+    
+    private boolean collision(Robot r, Hazard h) {
+        return r.x < h.x + h.width &&
+               r.x + r.width > h.x &&
+               r.y < h.y + h.height &&
+               r.y + h.height > h.y;
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (gameStarted) {
+            update();
+        }
+        repaint();
+    }
+
+    @Override
+    public void keyTyped(KeyEvent e) {}
+
+    @Override
+    public void keyPressed(KeyEvent e) {}
+
+    // MODIFIED: Handle difficulty selection controls
+    @Override
+    public void keyReleased(KeyEvent e) {
+        if (!gameStarted) {
+            if (showShop) { // ADD THIS ENTIRE BLOCK
+                if (e.getKeyCode() == KeyEvent.VK_UP) {
+                    shopSelectedIndex = (shopSelectedIndex - 1 + shopItems.length) % shopItems.length;
+                    repaint();
+                } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
+                    shopSelectedIndex = (shopSelectedIndex + 1) % shopItems.length;
+                    repaint();
+                } else if (e.getKeyCode() == KeyEvent.VK_SPACE) {
+                    purchaseUpgrade();
+                } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    showShop = false;
+                    repaint();
+                }
+                return;
+            }
+            
+            if (showInstructions) {
+                if (e.getKeyCode() == KeyEvent.VK_SPACE) {
+                    startGame();
+                } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    showInstructions = false;
+                }
+            } else {
+                if (e.getKeyCode() == KeyEvent.VK_SPACE) {
+                    startGame();
+                } else if (e.getKeyCode() == KeyEvent.VK_D) {
+                    showDifficultySelection();
+                } else if (e.getKeyCode() == KeyEvent.VK_U) { // ADD THIS
+                    showShop();
+                } else if (e.getKeyCode() == KeyEvent.VK_I) {
+                    showInstructions();
+                } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    System.exit(0);
+                }
+            }
+            return;
+        }
+        
+        if (levelComplete) {
+            if (e.getKeyCode() == KeyEvent.VK_SPACE) {
+                if (currentLevel < MAX_LEVEL - 1) {
+                    currentLevel++;
+                    levelComplete = false;
+                    hasKeycard = false;
+                    
+                    if (selectedDifficulty != DifficultyMode.PERMADEATH) {
+                        batteryLevel = maxBattery;
+                    }
+                    
+                    loadLevel();
+                    
+                    if (selectedDifficulty != DifficultyMode.BLACKOUT) {
+                        startPreview();
+                    }
+                } else {
+                    gameOver = true;
+                }
+            }
+            return;
+        }
+        
+        if (gameOver) {
+            if (e.getKeyCode() == KeyEvent.VK_R) {
+                currentLevel = 0;
+                score = 0;
+                batteryLevel = maxBattery;
+                hasKeycard = false;
+                speedBoostActive = false;
+                gameOver = false;
+                levelComplete = false;
+                speedrunTimer = 0;
+                
+                switch(selectedDifficulty) {
+                    case PERMADEATH:
+                        currentLives = 1;
+                        break;
+                    case NORMAL:
+                    default:
+                        currentLives = 3;
+                        break;
+                }
+                
+                loadLevel();
+                
+                if (selectedDifficulty != DifficultyMode.BLACKOUT) {
+                    startPreview();
+                }
+            } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                showMainMenu();
+            }
+            return;
+        }
+        
+        if (e.getKeyCode() == KeyEvent.VK_P) {
+            gamePaused = !gamePaused;
+            if (gamePaused) {
+                gameLoop.stop();
+                if (previewTimer_obj != null) previewTimer_obj.stop();
+            } else {
+                gameLoop.start();
+                if (previewMode && previewTimer_obj != null) previewTimer_obj.start();
+            }
+            return;
+        }
+        
+        if (gamePaused) return;
+
+     // ADD THIS LINE - Prevent movement during preview
+     if (previewMode) return;
+
+     if (e.getKeyCode() == KeyEvent.VK_UP || e.getKeyCode() == KeyEvent.VK_W) {
+         robot.updateDirection('U');
+         moveRobot();
+     }
+        else if (e.getKeyCode() == KeyEvent.VK_DOWN || e.getKeyCode() == KeyEvent.VK_S) {
+            robot.updateDirection('D');
+            moveRobot();
+        }
+        else if (e.getKeyCode() == KeyEvent.VK_LEFT || e.getKeyCode() == KeyEvent.VK_A) {
+            robot.updateDirection('L');
+            moveRobot();
+        }
+        else if (e.getKeyCode() == KeyEvent.VK_RIGHT || e.getKeyCode() == KeyEvent.VK_D) {
+            robot.updateDirection('R');
+            moveRobot();
+        }
+    }
+    
+    private void moveRobot() {
+        int newX = robot.x + robot.velocityX;
+        int newY = robot.y + robot.velocityY;
+        
+        boolean canMove = true;
+        for (Block wall : walls) {
+            if (newX < wall.x + wall.width && newX + robot.width > wall.x &&
+                newY < wall.y + wall.height && newY + robot.height > wall.y) {
+                canMove = false;
+                break;
+            }
+        }
+        
+        for (Hazard h : hazards) {
+            if (h.type == HazardType.MOVING_WALL) {
+                if (newX < h.x + h.width && newX + robot.width > h.x &&
+                    newY < h.y + h.height && newY + robot.height > h.y) {
+                    canMove = false;
+                    break;
+                }
+            }
+        }
+        
+        if (canMove) {
+            robot.x = newX;
+            robot.y = newY;
+        }
+    }
+
+    public static void main(String[] args) {
+        EventQueue.invokeLater(() -> {
+            JFrame frame = new JFrame("Factory Outage: Memory Escape");
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setResizable(false);
+            
+            FactoryMaze game = new FactoryMaze();
+            frame.add(game);
+            frame.pack();
+            frame.setLocationRelativeTo(null);
+            frame.setVisible(true);
+            
+            game.requestFocusInWindow();
+        });
+    }
+}
+import java.util.HashSet;
+import java.util.Random
 import javax.swing.*;
 
 public class PacMan extends JPanel implements ActionListener, KeyListener {
