@@ -1,0 +1,24 @@
+import java.awt.Graphics2D;
+
+public abstract class GameObject {
+    public int x, y, width, height;
+    
+    public GameObject(int x, int y, int width, int height) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+    }
+    
+    // Abstract methods - children MUST implement these
+    abstract void update();
+    abstract void draw(Graphics2D g2);
+    
+    // Shared collision method - all children can use this
+    public boolean collidesWith(GameObject other) {
+        return this.x < other.x + other.width &&
+               this.x + this.width > other.x &&
+               this.y < other.y + other.height &&
+               this.y + this.height > other.y;
+    }
+}
