@@ -1,1 +1,35 @@
+import java.awt.Color;
 
+public class Item {
+    public int x, y, width, height;
+    public ItemType type;
+    public boolean collected = false;
+    private int tileSize;
+    
+    public Item(ItemType type, int x, int y, int tileSize) {
+        this.type = type;
+        this.x = x;
+        this.y = y;
+        this.tileSize = tileSize;
+        this.width = tileSize/2;
+        this.height = tileSize/2;
+    }
+    
+    public Color getColor() {
+        switch(type) {
+            case BATTERY: return Color.YELLOW;
+            case KEYCARD: return Color.GREEN;
+            case SPEED_BOOST: return Color.CYAN;
+            default: return Color.WHITE;
+        }
+    }
+    
+    public String getSymbol() {
+        switch(type) {
+            case BATTERY: return "B";
+            case KEYCARD: return "K";
+            case SPEED_BOOST: return "S";
+            default: return "?";
+        }
+    }
+}
