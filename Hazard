@@ -1,0 +1,197 @@
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.util.HashSet;
+import java.util.Random;
+
+public class Hazard extends GameObject {
+    public HazardType type;
+    public boolean active = true;
+    public int timer = 0;
+    public char direction = 'R';
+    public int velocityX = 0, velocityY = 0;
+    public boolean chasing = false;
+    public int chaseTimer = 0;
+    public int detectionRadius;
+    
+    private int tileSize;
+    private Robot robot;
+    private HashSet<Block> walls;
+    private char[] directions = {'U', 'D', 'L', 'R'};
+    private Random random = new Random();
+    
+    public Hazard(HazardType type, int x, int y, int tileSize, Robot robot, HashSet<Block> walls) {
+        super(x, y, tileSize, tileSize);
+        this.type = type;
+        this.tileSize = tileSize;
+        this.robot = robot;
+        this.walls = walls;
+        this.detectionRadius = tileSize * 3;
+        
+        if (type == HazardType.PATROL_BOT) {
+            updateVelocity();
+        }
+    }
+    
+    void updateVelocity() {
+        int speed = tileSize/6;
+        switch(direction) {
+            case 'U': velocityX = 0; velocityY = -speed; break;
+            case 'D': velocityX = 0; velocityY = speed; break;
+            case 'L': velocityX = -speed; velocityY = 0; break;
+            case 'R': velocityX = speed; velocityY = 0; break;
+        }
+    }
+    
+    @Override
+    void update() {
+        timer++;
+        
+        switch(type) {
+        
+            case MOVING_WALL:
+                int oldX = x;
+                
+                if (direction == 'L') x -= 2;
+                else if (direction == 'R') x += 2;
+
+                // Check collision with static walls
+                for (Block wall : walls) {
+                    if (collision(this, wall)) {
+                        x = oldX; // Revert position
+                        if (direction == 'L') direction = 'R';
+                        else direction = 'L';
+                        break;
+                    }
+                }
+                
+                // Check collision with robot
+                if (collisionWithRobot(this)) {
+                    x = oldX; // Revert position - don't pass through robot
+                    if (direction == 'L') direction = 'R';
+                    else direction = 'L';
+                }
+                break;
+                
+            case ELECTRICAL_SPARK:
+                active = (timer % 40) < 20;
+                break;
+                
+            case LASER_BARRIER:
+                active = (timer % 120) < 60;
+                break;
+                
+            case PATROL_BOT:
+                double distance = Math.sqrt(Math.pow(x - robot.x, 2) + Math.pow(y - robot.y, 2));
+                if (distance <= detectionRadius && !chasing) {
+                    chasing = true;
+                    chaseTimer = 200;
+                }
+                
+                if (chasing) {
+                    chaseTimer--;
+                    if (chaseTimer <= 0) {
+                        chasing = false;
+                    } else {
+                        int dx = robot.x - x;
+                        int dy = robot.y - y;
+                        if (Math.abs(dx) > Math.abs(dy)) {
+                            direction = dx > 0 ? 'R' : 'L';
+                        } else {
+                            direction = dy > 0 ? 'D' : 'U';
+                        }
+                    }
+                } else {
+                    if (timer % 60 == 0) {
+                        direction = directions[random.nextInt(4)];
+                    }
+                }
+                
+                updateVelocity();
+                x += velocityX;
+                y += velocityY;
+                
+                for (Block wall : walls) {
+                    if (collision(this, wall)) {
+                        x -= velocityX;
+                        y -= velocityY;
+                        direction = directions[random.nextInt(4)];
+                        updateVelocity();
+                        break;
+                    }
+                }
+                break;
+                
+            default:
+                break;
+        }
+    }
+    
+    @Override
+    void draw(Graphics2D g2) {
+        switch(type) {
+            case ACID_POOL:
+                g2.setColor(new Color(200, 50, 50, 180));
+                g2.fillRect(x, y, width, height);
+                g2.setColor(new Color(255, 100, 100));
+                g2.drawRect(x, y, width - 1, height - 1);
+                break;
+                
+            case ELECTRICAL_SPARK:
+                if (active) {
+                    g2.setColor(new Color(255, 255, 0, 200));
+                    g2.fillRect(x, y, width, height);
+                    g2.setStroke(new BasicStroke(3));
+                    g2.setColor(Color.YELLOW);
+                    g2.drawLine(x, y, x + width, y + height);
+                    g2.drawLine(x + width, y, x, y + height);
+                    g2.setStroke(new BasicStroke(1));
+                }
+                break;
+                
+            case LASER_BARRIER:
+                if (active) {
+                    g2.setColor(new Color(255, 0, 255, 150));
+                    g2.fillRect(x, y, width, height);
+                    g2.setStroke(new BasicStroke(2));
+                    g2.setColor(Color.MAGENTA);
+                    g2.drawLine(x, y + height/2, x + width, y + height/2);
+                    g2.setStroke(new BasicStroke(1));
+                }
+                break;
+            
+            case MOVING_WALL:
+                g2.setColor(Color.ORANGE);
+                g2.fillRect(x, y, width, height);
+                break;
+                
+            case PATROL_BOT:
+                if (chasing) {
+                    g2.setColor(new Color(255, 0, 0, 50));
+                    g2.fillOval(x - detectionRadius/2, y - detectionRadius/2,
+                               detectionRadius, detectionRadius);
+                }
+                
+                g2.setColor(new Color(150, 50, 50));
+                g2.fillRoundRect(x + 2, y + 2, width - 4, height - 4, 5, 5);
+                g2.setColor(chasing ? Color.RED : Color.ORANGE);
+                g2.fillOval(x + 8, y + 8, 8, 8);
+                g2.fillOval(x + 16, y + 8, 8, 8);
+                break;
+        }
+    }
+    
+    boolean collision(Hazard h, Block b) {
+        return h.x < b.x + b.width &&
+               h.x + h.width > b.x &&
+               h.y < b.y + b.height &&
+               h.y + h.height > b.y;
+    }
+    
+    boolean collisionWithRobot(Hazard h) {
+        return h.x < robot.x + robot.width &&
+               h.x + h.width > robot.x &&
+               h.y < robot.y + robot.height &&
+               h.y + h.height > robot.y;
+    }
+}
