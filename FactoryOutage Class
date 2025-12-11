@@ -8,6 +8,9 @@ import javax.imageio.ImageIO;
 import java.io.File;
 import java.io.IOException;
 
+import javax.sound.sampled.*;
+import java.net.URL;
+
 public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
     
     // ============================================
@@ -409,7 +412,6 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
     
  // BASE CLASS - Parent for all game objects
 
-// ECAPSULATION IS DONE HERE
     private int rowCount = 21;
     private int columnCount = 19;
     private int tileSize = 32;
@@ -457,6 +459,14 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
     boolean gameOver = false;
     boolean levelComplete = false;
     
+    private boolean soundEnabled = true;
+    private Clip menuMusicClip;
+    private Clip gameMusicClip;
+    private boolean menuMusicPlaying = false;
+    private boolean gameMusicPlaying = false;
+    private int damageFlashTimer = 0;
+    private int screenShakeTimer = 0;
+    
     private boolean blinkState = false;
     private int blinkTimer = 0;
     
@@ -472,11 +482,16 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
 
         initializeShop();
         showMainMenu();
+        playMenuMusic(); 
     }
     
     private void showMainMenu() {
         gameStarted = false;
         showDifficultySelect = false;
+        
+        // ------- THIS IS THE MENU SOUND -------- //
+        playMenuMusic();
+        
         repaint();
     }
     
@@ -493,6 +508,8 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
     
     // MODIFIED: Handle difficulty settings
     private void startGame() {
+    	stopMenuMusic();    // ------ THIS IS TO STOP MENU SOUND AND START GAME MUSIC ------- //
+        playGameMusic();
         gameStarted = true;
         showInstructions = false;
         showDifficultySelect = false;
@@ -690,6 +707,14 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             blinkTimer = 0;
         }
         
+     // SCREEN SHAKE
+        int shakeX = 0, shakeY = 0;
+        if (screenShakeTimer > 0) {
+            shakeX = random.nextInt(8) - 4;  // Shake between -4 and +4 pixels
+            shakeY = random.nextInt(8) - 4;
+            g2.translate(shakeX, shakeY);
+        }
+        
         g2.setColor(new Color(20, 20, 30));
         g2.fillRect(0, 0, boardWidth, boardHeight);
         
@@ -708,6 +733,27 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         }
         
         drawHUD(g2);
+        
+     //  DAMAGE FLASH OVERLAY
+        if (damageFlashTimer > 0) {
+            int alpha = (int)(150 * (damageFlashTimer / 15.0));  // Fade out
+            g2.setColor(new Color(255, 0, 0, alpha));
+            g2.fillRect(0, 0, boardWidth, boardHeight);
+            
+            // Damage text
+            if (damageFlashTimer > 5) {
+                g2.setColor(Color.WHITE);
+                g2.setFont(new Font("DialogInput", Font.BOLD, 32));
+                String damageText = "-20 BATTERY";
+                int textWidth = g2.getFontMetrics().stringWidth(damageText);
+                g2.drawString(damageText, (boardWidth - textWidth) / 2, boardHeight / 2);
+            }
+        }
+
+        //UNDO SCREEN SHAKE
+        if (screenShakeTimer > 0) {
+            g2.translate(-shakeX, -shakeY);
+        }
         
         if (levelComplete) {
             drawLevelComplete(g2);
@@ -842,6 +888,15 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         g2.drawString("TERMINAL STATUS: ONLINE", boardWidth - 200, boardHeight - 40);
         g2.setColor(new Color(255, 200, 0));
         g2.drawString("POWER: CRITICAL", boardWidth - 200, boardHeight - 20);
+        
+     // MUSIC INDICATOR
+        if (soundEnabled && menuMusicPlaying) {
+            g2.setColor(new Color(0, 255, 100));
+            g2.drawString("♪ MUSIC: ONLINE", 50, boardHeight - 120);
+        } else if (!soundEnabled) {
+            g2.setColor(new Color(255, 100, 100));
+            g2.drawString("♪ AUDIO: MUTED", 50, boardHeight - 100);
+        }
     }
     
     // NEW: Draw difficulty selection screen
@@ -975,6 +1030,7 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         g2.drawString("• Arrow Keys / WASD: Movement", 70, 470);
         g2.drawString("• P: Pause System", 70, 490);
         g2.drawString("• R: System Restart", 70, 510);
+        g2.drawString("• M: Toggle Sound", 70, 530); 
         g2.drawString("• ESC: Emergency Exit", 70, 530);
         
         g2.setFont(new Font("Courier New", Font.BOLD, 16));
@@ -1211,24 +1267,26 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
     
     // MODIFIED: Added difficulty indicators and speedrun timer
     private void drawHUD(Graphics2D g2) {
-        g2.setColor(new Color(0, 0, 0, 180));
-        g2.fillRoundRect(10, 10, 350, 90, 15, 15);
+        g2.setColor(new Color(0, 0, 0, 180)); // R G B B/Transparent
+        g2.fillRoundRect(10, 8, 300, 65, 15, 15); //1st is X axis 2nd is Y axis 
+              									  //3rd is length 4th is height 
+        									      //5th is hoe round the top and bottom 6th is how round the sides
         
-        g2.setFont(new Font("DialogInput", Font.BOLD, 16));
+        g2.setFont(new Font("DialogInput", Font.BOLD, 14));
         g2.setColor(Color.WHITE);
-        g2.drawString("Level: " + (currentLevel + 1) + "/4", 20, 30);
-        g2.drawString("Score: " + score, 20, 50);
+        g2.drawString("Level: " + (currentLevel + 1) + "/4", 20, 25); // X axis, Y  axis
+        g2.drawString("Score: " + score, 20, 45);
         
         g2.setColor(getDifficultyColor(selectedDifficulty));
-        g2.drawString(selectedDifficulty.name, 20, 70);
+        g2.drawString(selectedDifficulty.name, 20, 65);
         
         g2.setColor(Color.WHITE);
-        g2.drawString("Battery:", 150, 30);
+        g2.drawString("Battery:", 125, 25);
         g2.setColor(batteryLevel > 20 ? Color.GREEN : Color.RED);
-        g2.fillRect(220, 20, (int)(batteryLevel * 1.2), 12);
+        g2.fillRect(200, 15, (int)(batteryLevel * 1), 12); // X axis Y axis Length of green battery then height 
         g2.setColor(Color.WHITE);
-        g2.drawRect(220, 20, 120, 12);
-        g2.drawString(batteryLevel + "%", 220, 50);
+        g2.drawRect(200, 15, 100, 12); // X axis Y axis Length then Height
+        g2.drawString(batteryLevel + "%", 200, 45);
         
         if (selectedDifficulty == DifficultyMode.PERMADEATH) {
             g2.setColor(Color.RED);
@@ -1403,6 +1461,10 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
     public void update() {
         if (gamePaused || gameOver || levelComplete || !gameStarted) return;
         
+     // TIMER UPDATES
+        if (damageFlashTimer > 0) damageFlashTimer--;
+        if (screenShakeTimer > 0) screenShakeTimer--;
+        
         if (selectedDifficulty == DifficultyMode.SPEEDRUN) {
             speedrunTimer++;
         }
@@ -1437,6 +1499,13 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
                     (hazard.type == HazardType.ELECTRICAL_SPARK && hazard.active) ||
                     (hazard.type == HazardType.LASER_BARRIER && hazard.active)) {
                     
+                	// -------------- //
+                    // THIS IS THE SOUND //
+                	playSound("damage"); 
+                	
+                	damageFlashTimer = 15;   // Red flash for 0.75 seconds
+                    screenShakeTimer = 10;   // Screen shake for 0.5 seconds
+                	
                     batteryLevel = Math.max(0, batteryLevel - 20);
                     if (batteryLevel <= 0) {
                         handleDeath();
@@ -1454,6 +1523,8 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             if (!item.collected && collision(robot, item)) {
                 item.collected = true;
                 itemsToRemove.add(item);
+                
+                playSound("pickup");
                 
                 switch(item.type) {
                     case BATTERY:
@@ -1478,12 +1549,15 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             if (hasKeycard || currentLevel < 2) {
                 levelComplete = true;
                 score += 200 + batteryLevel;
+                playSound("victory");
             }
         }
     }
     
     // NEW: Handle death based on difficulty
     private void handleDeath() {
+    	playSound("death");
+    	
         currentLives--;
         
         if (selectedDifficulty == DifficultyMode.PERMADEATH || currentLives <= 0) {
@@ -1557,16 +1631,19 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             
             if (showDifficultySelect) {
                 if (e.getKeyCode() == KeyEvent.VK_UP) {
+                	playSound("beep");
                     int currentIndex = selectedDifficulty.ordinal();
                     currentIndex = (currentIndex - 1 + DifficultyMode.values().length) % DifficultyMode.values().length;
                     selectedDifficulty = DifficultyMode.values()[currentIndex];
                     repaint();
                 } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
+                	playSound("beep");
                     int currentIndex = selectedDifficulty.ordinal();
                     currentIndex = (currentIndex + 1) % DifficultyMode.values().length;
                     selectedDifficulty = DifficultyMode.values()[currentIndex];
                     repaint();
                 } else if (e.getKeyCode() == KeyEvent.VK_SPACE) {
+                	playSound("beep");
                     startGame();
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
                     showDifficultySelect = false;
@@ -1577,18 +1654,23 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             
             if (showInstructions) {
                 if (e.getKeyCode() == KeyEvent.VK_SPACE) {
+                	playSound("beep");
                     startGame();
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
                     showInstructions = false;
                 }
             } else {
                 if (e.getKeyCode() == KeyEvent.VK_SPACE) {
+                	playSound("beep");
                     startGame();
                 } else if (e.getKeyCode() == KeyEvent.VK_D) {
+                	playSound("beep");
                     showDifficultySelection();
                 } else if (e.getKeyCode() == KeyEvent.VK_U) { 
+                	playSound("beep");
                     showShop();
                 } else if (e.getKeyCode() == KeyEvent.VK_I) {
+                	playSound("beep");
                     showInstructions();
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
                     System.exit(0);
@@ -1657,16 +1739,44 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             if (gamePaused) {
                 gameLoop.stop();
                 if (previewTimer_obj != null) previewTimer_obj.stop();
+                
+                // ← ADD: Pause music
+                if (gameMusicClip != null && gameMusicClip.isRunning()) {
+                    gameMusicClip.stop();
+                }
             } else {
                 gameLoop.start();
                 if (previewMode && previewTimer_obj != null) previewTimer_obj.start();
+                
+                // ← ADD: Resume music
+                if (soundEnabled && gameMusicClip != null) {
+                    gameMusicClip.start();
+                }
             }
             return;
         }
         
+        if (e.getKeyCode() == KeyEvent.VK_M) {
+            soundEnabled = !soundEnabled;
+            System.out.println("Sound: " + (soundEnabled ? "ON" : "OFF"));
+            
+            if (soundEnabled) {
+                playBeep();
+                // Restart appropriate music
+                if (!gameStarted) {
+                    playMenuMusic();
+                } else if (!gameOver && !levelComplete) {
+                    playGameMusic();
+                }
+            } else {
+                // Stop all music when muted
+                stopAllMusic();
+            }
+            return;
+        }
         if (gamePaused) return;
 
-     // ADD THIS LINE - Prevent movement during preview
+     //- Prevent movement during preview
      if (previewMode) return;
 
      if (e.getKeyCode() == KeyEvent.VK_UP || e.getKeyCode() == KeyEvent.VK_W) {
@@ -1713,6 +1823,169 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         if (canMove) {
             robot.x = newX;
             robot.y = newY;
+        }
+    }
+    
+ // ========================================
+    // SOUND SYSTEM - ADD THIS ENTIRE SECTION
+    // ========================================
+    
+    private void playSound(String soundName) {
+        if (!soundEnabled) return;
+        
+        try {
+            // Load sound file
+            java.net.URL soundURL = getClass().getResource("/sounds/" + soundName + ".wav");
+            
+            if (soundURL == null) {
+                System.out.println("⚠️ Sound file not found: /sounds/" + soundName + ".wav");
+                System.out.println("Make sure the file is in src/sounds/ folder");
+                return;
+            }
+            
+            // Play the sound
+            java.applet.AudioClip clip = java.applet.Applet.newAudioClip(soundURL);
+            clip.play();
+            
+            System.out.println("✓ Playing sound: " + soundName);
+            
+        } catch (Exception e) {
+            System.out.println("❌ Error playing sound: " + soundName);
+            System.out.println("Error details: " + e.getMessage());
+        }
+    }
+    
+    // Fallback beep if sounds don't work
+    private void playBeep() {
+        if (!soundEnabled) return;
+        java.awt.Toolkit.getDefaultToolkit().beep();
+    }
+
+    // ========================================
+    // BACKGROUND MUSIC SYSTEM - ALL THIS
+    // ========================================
+
+    private void playMenuMusic() {
+        if (!soundEnabled) return;
+        
+        // Stop game music if playing
+        stopGameMusic();
+        
+        // Don't restart if already playing
+        if (menuMusicPlaying && menuMusicClip != null && menuMusicClip.isRunning()) {
+            return;
+        }
+        
+        try {
+            // Load menu music
+            URL musicURL = getClass().getResource("/sounds/menu_music.wav");
+            
+            if (musicURL == null) {
+                System.out.println("⚠️ Menu music not found: /sounds/menu_music.wav");
+                return;
+            }
+            
+            // Stop old clip if exists
+            if (menuMusicClip != null) {
+                menuMusicClip.stop();
+                menuMusicClip.close();
+            }
+            
+            // Create new clip
+            AudioInputStream audioIn = AudioSystem.getAudioInputStream(musicURL);
+            menuMusicClip = AudioSystem.getClip();
+            menuMusicClip.open(audioIn);
+            
+            // Loop continuously
+            menuMusicClip.loop(Clip.LOOP_CONTINUOUSLY);
+            
+            // Set volume (50% volume)
+            setVolume(menuMusicClip, 0.5f);
+            
+            menuMusicPlaying = true;
+            System.out.println("🎵 Playing menu music...");
+            
+        } catch (Exception e) {
+            System.out.println("❌ Error playing menu music: " + e.getMessage());
+        }
+    }
+
+    private void stopMenuMusic() {
+        if (menuMusicClip != null && menuMusicClip.isRunning()) {
+            menuMusicClip.stop();
+            menuMusicPlaying = false;
+            System.out.println("🔇 Stopped menu music");
+        }
+    }
+
+    private void playGameMusic() {
+        if (!soundEnabled) return;
+        
+        // Stop menu music if playing
+        stopMenuMusic();
+        
+        // Don't restart if already playing
+        if (gameMusicPlaying && gameMusicClip != null && gameMusicClip.isRunning()) {
+            return;
+        }
+        
+        try {
+            // Load game music
+            URL musicURL = getClass().getResource("/sounds/game_music.wav");
+            
+            if (musicURL == null) {
+                System.out.println("⚠️ Game music not found (this is optional)");
+                return;
+            }
+            
+            // Stop old clip if exists
+            if (gameMusicClip != null) {
+                gameMusicClip.stop();
+                gameMusicClip.close();
+            }
+            
+            // Create new clip
+            AudioInputStream audioIn = AudioSystem.getAudioInputStream(musicURL);
+            gameMusicClip = AudioSystem.getClip();
+            gameMusicClip.open(audioIn);
+            
+            // Loop continuously
+            gameMusicClip.loop(Clip.LOOP_CONTINUOUSLY);
+            
+            // Set volume (40% - quieter during gameplay)
+            setVolume(gameMusicClip, 0.4f);
+            
+            gameMusicPlaying = true;
+            System.out.println("🎵 Playing game music...");
+            
+        } catch (Exception e) {
+            System.out.println("❌ Error playing game music: " + e.getMessage());
+        }
+    }
+
+    private void stopGameMusic() {
+        if (gameMusicClip != null && gameMusicClip.isRunning()) {
+            gameMusicClip.stop();
+            gameMusicPlaying = false;
+            System.out.println("🔇 Stopped game music");
+        }
+    }
+
+    private void stopAllMusic() {
+        stopMenuMusic();
+        stopGameMusic();
+    }
+
+    // Set volume for music (0.0 to 1.0)
+    private void setVolume(Clip clip, float volume) {
+        if (clip == null) return;
+        
+        try {
+            FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+            float dB = (float) (Math.log(volume) / Math.log(10.0) * 20.0);
+            gainControl.setValue(dB);
+        } catch (Exception e) {
+            System.out.println("⚠️ Could not set volume");
         }
     }
 
