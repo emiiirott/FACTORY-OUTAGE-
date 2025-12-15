@@ -11,12 +11,22 @@ import java.io.IOException;
 import javax.sound.sampled.*;
 import java.net.URL;
 
+/**
+ * Main game class - this is where everything comes together!
+ * Think of this as the "brain" of the game that controls the player,
+ * enemies, items, and all the game logic.
+ */
 public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
     
     // ============================================
     // DIFFICULTY SYSTEM
+    // This is where we define different ways to play the game
     // ============================================
     
+    /**
+     * Different game modes that change how challenging the game is.
+     * Each mode has its own twist on the gameplay.
+     */
     enum DifficultyMode {
         NORMAL("Normal Mode", "Standard gameplay with preview"),
         PERMADEATH("Permadeath", "One life for all levels - no battery refills!"),
@@ -26,46 +36,55 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         String name;
         String description;
         
+        // Constructor that sets up each difficulty mode with a name and description
         DifficultyMode(String name, String description) {
             this.name = name;
             this.description = description;
         }
     }
     
+    // Variables to track which difficulty is selected and related stats
     private DifficultyMode selectedDifficulty = DifficultyMode.NORMAL;
-    private boolean showDifficultySelect = false;
-    private int speedrunTimer = 0;
-    private int[] speedrunTargets = {600, 800, 1000, 1200}; // Target times in ticks for each level
-    private int levelStartTime = 0;
-    private int totalLives = 3;
-    private int currentLives = 3;
+    private boolean showDifficultySelect = false; // Are we showing the difficulty menu?
+    private int speedrunTimer = 0; // How long has the player been playing?
+    private int[] speedrunTargets = {600, 800, 1000, 1200}; // Target completion times for each level
+    private int levelStartTime = 0; // When did the current level start?
+    private int totalLives = 3; // How many lives the player gets total
+    private int currentLives = 3; // How many lives the player has right now
     
  // ============================================
  // SHOP SYSTEM
+ // This lets players spend points to make their character stronger
  // ============================================
 
- private boolean showShop = false;
- private int totalPoints = 0; // Accumulated points across all games
- private int shopSelectedIndex = 0;
+ private boolean showShop = false; // Are we currently showing the shop menu?
+ private int totalPoints = 0; // Currency the player has earned from playing
+ private int shopSelectedIndex = 0; // Which upgrade is currently highlighted?
+ private boolean showResetConfirmation = false; //for confirmation dialog
 
- // Upgrade levels (0 = not purchased, higher = more upgraded)
+ // These track how many times each upgrade has been purchased (0 = not bought yet)
  private int batteryDrainUpgrade = 0;
  private int visionRangeUpgrade = 0;
  private int movementSpeedUpgrade = 0;
  private int maxBatteryUpgrade = 0;
  private int startingLivesUpgrade = 0;
 
- // Upgrade costs and max levels
+ // The maximum level you can upgrade something to
  private static final int MAX_UPGRADE_LEVEL = 5;
 
+ /**
+  * This class represents a single item you can buy in the shop.
+  * Each item has a name, description, cost, and what stat it improves.
+  */
  class ShopItem {
-     String name;
-     String description;
-     int baseCost;
-     int currentLevel;
-     int maxLevel;
-     String stat;
+     String name; // What's it called?
+     String description; // What does it do?
+     int baseCost; // How much does the first level cost?
+     int currentLevel; // How many times have we bought this?
+     int maxLevel; // What's the maximum level we can reach?
+     String stat; // Which stat does this upgrade affect?
      
+     // Constructor to set up a new shop item
      ShopItem(String name, String description, int baseCost, int maxLevel, String stat) {
          this.name = name;
          this.description = description;
@@ -75,14 +94,24 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
          this.stat = stat;
      }
      
+     /**
+      * Calculates how much this upgrade costs right now.
+      * The more times you've bought it, the more expensive it gets!
+      */
      int getCost() {
          return baseCost * (currentLevel + 1); // Cost increases with each level
      }
      
+     /**
+      * Have we maxed out this upgrade already?
+      */
      boolean isMaxed() {
          return currentLevel >= maxLevel;
      }
      
+     /**
+      * Returns a string showing the current level or "MAX" if fully upgraded
+      */
      String getDisplayInfo() {
          if (isMaxed()) {
              return " [MAX]";
@@ -91,8 +120,12 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
      }
  }
 
- private ShopItem[] shopItems;
+ private ShopItem[] shopItems; // Array holding all the upgrades available in the shop
 
+ /**
+  * Sets up all the shop items when the game starts.
+  * Think of this as stocking the shelves!
+  */
  private void initializeShop() {
      shopItems = new ShopItem[] {
          new ShopItem("Battery Efficiency", "Reduces battery drain rate", 500, 5, "DRAIN"),
@@ -102,24 +135,180 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
          new ShopItem("Extra Life", "Start with more lives (Normal mode)", 1000, 3, "LIVES")
      };
      
-     // Load current upgrade levels
+     // Load the current upgrade levels so they match what the player has already bought
      shopItems[0].currentLevel = batteryDrainUpgrade;
      shopItems[1].currentLevel = visionRangeUpgrade;
      shopItems[2].currentLevel = movementSpeedUpgrade;
      shopItems[3].currentLevel = maxBatteryUpgrade;
      shopItems[4].currentLevel = startingLivesUpgrade;
  }
+ 
+//========================================
+//SAVE/LOAD SYSTEM
+//Saves player progress to a file
+//========================================
+
+/**
+* Saves the player's total points and upgrades to a file.
+* This file persists even after closing the game!
+*/
+private void saveProgress() {
+  try {
+      // Create a file in the user's home directory
+      File saveFile = new File(System.getProperty("user.home"), "factory_maze_save.txt");
+      java.io.FileWriter writer = new java.io.FileWriter(saveFile);
+      
+      // Write all the data we want to save (one value per line)
+      writer.write(totalPoints + "\n");
+      writer.write(batteryDrainUpgrade + "\n");
+      writer.write(visionRangeUpgrade + "\n");
+      writer.write(movementSpeedUpgrade + "\n");
+      writer.write(maxBatteryUpgrade + "\n");
+      writer.write(startingLivesUpgrade + "\n");
+      
+      writer.close();
+      System.out.println("✓ Progress saved! Points: " + totalPoints);
+      
+  } catch (Exception e) {
+      System.out.println("❌ Could not save progress: " + e.getMessage());
+  }
+}
+
+/**
+* Loads the player's saved progress from file.
+* Called when the game starts up.
+*/
+private void loadProgress() {
+  try {
+      File saveFile = new File(System.getProperty("user.home"), "factory_maze_save.txt");
+      
+      // Check if save file exists
+      if (!saveFile.exists()) {
+          System.out.println("No save file found - starting fresh!");
+          return;
+      }
+      
+      // Read the file
+      java.util.Scanner scanner = new java.util.Scanner(saveFile);
+      
+      // Load each value in the same order we saved them
+      if (scanner.hasNextInt()) totalPoints = scanner.nextInt();
+      if (scanner.hasNextInt()) batteryDrainUpgrade = scanner.nextInt();
+      if (scanner.hasNextInt()) visionRangeUpgrade = scanner.nextInt();
+      if (scanner.hasNextInt()) movementSpeedUpgrade = scanner.nextInt();
+      if (scanner.hasNextInt()) maxBatteryUpgrade = scanner.nextInt();
+      if (scanner.hasNextInt()) startingLivesUpgrade = scanner.nextInt();
+      
+      scanner.close();
+      System.out.println("✓ Progress loaded! Points: " + totalPoints);
+      
+  } catch (Exception e) {
+      System.out.println("❌ Could not load progress: " + e.getMessage());
+  }
+}
+
+/**
+ * Deletes the save file and resets all progress.
+ * Useful for testing or if player wants to start over.
+ */
+private void resetProgress() {
+    try {
+        File saveFile = new File(System.getProperty("user.home"), "factory_maze_save.txt");
+        if (saveFile.exists()) {
+            saveFile.delete();
+        }
+        
+        // Reset all values
+        totalPoints = 0;
+        batteryDrainUpgrade = 0;
+        visionRangeUpgrade = 0;
+        movementSpeedUpgrade = 0;
+        maxBatteryUpgrade = 0;
+        startingLivesUpgrade = 0;
+        
+        initializeShop(); // Refresh shop
+        System.out.println("✓ Progress reset!");
+        
+    } catch (Exception e) {
+        System.out.println("❌ Could not reset progress: " + e.getMessage());
+    }
+}
+
+/**
+ * Draws a confirmation dialog asking if player really wants to reset.
+ * We don't want accidental resets!
+ */
+private void drawResetConfirmation(Graphics2D g2) {
+    // Dark overlay
+    g2.setColor(new Color(0, 0, 0, 200));
+    g2.fillRect(0, 0, boardWidth, boardHeight);
+    
+    // Warning box
+    g2.setColor(new Color(139, 0, 0)); // Dark red
+    g2.fillRoundRect(boardWidth / 2 - 200, boardHeight / 2 - 100, 400, 200, 15, 15);
+    
+    // Border
+    g2.setColor(new Color(255, 50, 50));
+    g2.setStroke(new BasicStroke(3));
+    g2.drawRoundRect(boardWidth / 2 - 200, boardHeight / 2 - 100, 400, 200, 15, 15);
+    g2.setStroke(new BasicStroke(1));
+    
+    // Warning icon and text
+    g2.setColor(Color.YELLOW);
+    g2.setFont(new Font("Courier New", Font.BOLD, 48));
+    g2.drawString("⚠", boardWidth / 2 - 20, boardHeight / 2 - 40);
+    
+    g2.setColor(Color.WHITE);
+    g2.setFont(new Font("Courier New", Font.BOLD, 20));
+    String warning = "RESET ALL PROGRESS?";
+    int warnWidth = g2.getFontMetrics().stringWidth(warning);
+    g2.drawString(warning, boardWidth / 2 - warnWidth / 2, boardHeight / 2 + 5);
+    
+    g2.setFont(new Font("Courier New", Font.PLAIN, 14));
+    g2.setColor(new Color(255, 200, 200));
+    String details = "This will delete ALL points and upgrades!";
+    int detailWidth = g2.getFontMetrics().stringWidth(details);
+    g2.drawString(details, boardWidth / 2 - detailWidth / 2, boardHeight / 2 + 30);
+    
+    g2.setColor(Color.RED);
+    String warning2 = "This action CANNOT be undone!";
+    int warn2Width = g2.getFontMetrics().stringWidth(warning2);
+    g2.drawString(warning2, boardWidth / 2 - warn2Width / 2, boardHeight / 2 + 50);
+    
+    // Options
+    g2.setFont(new Font("Courier New", Font.BOLD, 16));
+    g2.setColor(Color.GREEN);
+    g2.drawString("Press Y to Confirm", boardWidth / 2 - 170, boardHeight / 2 + 85);
+    
+    g2.setColor(Color.WHITE);
+    g2.drawString("Press N to Cancel", boardWidth / 2 + 30, boardHeight / 2 + 85);
+}
     
     // ============================================
-    // ORIGINAL CODE
+    // LEVEL MAPS
+    // This is the actual layout of each level!
     // ============================================
     
- // Change from String[][] to String[][][]
- // Format: [level][variation][rows]
+ /**
+  * This massive array holds all the level layouts.
+  * Each level has 3 variations to keep things fresh!
+  * 
+  * Legend for the map symbols:
+  * X = Wall (you can't walk through these)
+  * P = Player starting position
+  * E = Exit (reach this to win the level!)
+  * A = Acid pool (dangerous)
+  * S = Electrical spark (zaps you)
+  * L = Laser barrier (blocks your path)
+  * R = Patrol bot (moves around and chases you)
+  * M = Moving wall (slides back and forth)
+  * B = Battery pickup (restores your flashlight power)
+  * K = Keycard (needed to unlock certain doors)
+  */
  private String[][][] levelMaps = {
-     // LEVEL 1 - Workshop (Easy) - 3 variations
+     // LEVEL 1 - Workshop (Easy)
      {
-         {  // Variation 1
+         {  // Variation 1 - First possible layout
              "XXXXXXXXXXXXXXXXXXX",
              "X   A     X     B X",
              "X XXPXXX  X   XX  X",
@@ -142,7 +331,7 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
              "X       AEB       X",
              "XXXXXXXXXXXXXXXXXXX" 
          },
-         {  // Variation 2 - Different layout
+         {  // Variation 2 - Different paths and enemy placements
              "XXXXXXXXXXXXXXXXXXX",
              "X P    B    A     X",
              "X XXXXX XXXXX XXX X",
@@ -165,7 +354,7 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
              "X   A         E   X",
              "XXXXXXXXXXXXXXXXXXX"
          },
-         {  // Variation 3 - Another different layout
+         {  // Variation 3 - Yet another layout
              "XXXXXXXXXXXXXXXXXXX",
              "X E     K     A   X",
              "X XXXXX XXXXX XXX X",
@@ -190,9 +379,9 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
          }
      },
      
-     // LEVEL 2 - Chemical Storage (Intermediate) - 3 variations
+     // LEVEL 2 - Chemical Storage (Intermediate) 
      {
-         {  // Variation 1 (your original)
+         {  // Variation 1 - More hazards and tighter spaces
              "XXXXXXXXXXXXXXXXXXX",
              "X A     R   L   A X",
              "X XXXMX X XXXXX X X",
@@ -263,9 +452,9 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
          }
      },
      
-     // LEVEL 3 - Server Room (Advanced) - 3 variations
+     // LEVEL 3 - Server Room (Advanced) 
      {
-         {  // Variation 1 (your original)
+         {  // Variation 1 - Lots of obstacles and tight corridors
              "XXXXXXXXXXXXXXXXXXX",
              "XAAA X  L  X AAA XX",
              "XAAA X XMM X AAA XX",
@@ -336,9 +525,9 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
          }
      },
      
-     // LEVEL 4 - Reactor Core (Hardest) - 3 variations
+     // LEVEL 4 - Reactor Core (Hardest) 
      {
-         {  // Variation 1 (your original)
+         {  // Variation 1 - Maximum chaos
              "XXXXXXXXXXXXXXXXXXX",
              "X  AAA  X X  AAA  X",
              "X XXXMM X X XXXXX X",
@@ -410,106 +599,142 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
      }
  };
     
- // BASE CLASS - Parent for all game objects
+    // ============================================
+    // GAME BOARD SETTINGS
+    // These control the size and appearance of the game window
+    // ============================================
 
-    private int rowCount = 21;
-    private int columnCount = 19;
-    private int tileSize = 32;
-    private int boardWidth = columnCount * tileSize;// 19 × 32 = 608 pixels
-    private int boardHeight = rowCount * tileSize; // 21 × 32 = 672 pixels
+    private int rowCount = 21; // How many rows of tiles make up the map
+    private int columnCount = 19; // How many columns of tiles
+    private int tileSize = 32; // Each tile is 32x32 pixels
+    private int boardWidth = columnCount * tileSize; // Total width: 19 × 32 = 608 pixels
+    private int boardHeight = rowCount * tileSize; // Total height: 21 × 32 = 672 pixels
 
-    private int currentLevel = 0;
-    private int currentMapVariation = 0;
-    private final int MAX_LEVEL = 4;
-    private boolean levelTransition = false;
-    private int transitionCountdown = 0;
+    // Level tracking
+    private int currentLevel = 0; // Which level are we on? (0-3)
+    private int currentMapVariation = 0; // Which variation of that level? (0-2)
+    private final int MAX_LEVEL = 4; // Total number of levels in the game
+    private boolean levelTransition = false; // Are we between levels right now?
+    private int transitionCountdown = 0; // Timer for level transition animation
     
+    // Visual style for walls - changes each level to keep things interesting
     private String currentWallStyle = "RUST";
     private String[] wallStyles = {"STEEL", "HAZARD", "GLOW", "TECH"};
     
-    private boolean previewMode = true;
-    private int previewTimer = 0;
-    private int[] previewDurations = {100, 100, 100, 90};
+    // Memory preview system - you get to see the whole map briefly at the start
+    private boolean previewMode = true; // Are we in preview mode right now?
+    private int previewTimer = 0; // How much time is left in preview?
+    private int[] previewDurations = {100, 100, 100, 90}; // Preview time for each level (in ticks)
     
-    private int batteryLevel = 100;
-    private int maxBattery = 100;
-    private final int BATTERY_DRAIN_RATE = 4;
-    private int batteryDrainTimer = 0;
-    private final int VISION_RADIUS = 80;
+    // Battery/flashlight system - your light runs out over time
+    private int batteryLevel = 100; // Current battery charge (0-100)
+    private int maxBattery = 100; // Maximum battery capacity
+    private final int BATTERY_DRAIN_RATE = 4; // How fast the battery drains per tick
+    private int batteryDrainTimer = 0; // Counter for when to drain battery
+    private final int VISION_RADIUS = 80; // How far you can see with your flashlight
     
-    private boolean gameStarted = false;
-    private boolean showInstructions = false;
-    private boolean gamePaused = false;
-    
-    private boolean hasKeycard = false;
-    private boolean speedBoostActive = false;
-    private int speedBoostDuration = 0;
-    
-    private HashSet<Block> walls;
-    private HashSet<Item> items;
-    private HashSet<Hazard> hazards;
-    private Robot robot;
-    private Block exit;
+    // Game state flags - what's currently happening?
+    private boolean gameStarted = false; // Has the player started playing?
+    private boolean showInstructions = false; // Are we showing the help screen?
+    private boolean gamePaused = false; // Is the game paused?
+    private boolean wonGame = false;
 
-    Timer gameLoop;
-    Timer previewTimer_obj;
-    char[] directions = {'U', 'D', 'L', 'R'};
-    Random random = new Random();
-    int score = 0;
-    boolean gameOver = false;
-    boolean levelComplete = false;
     
-    private boolean soundEnabled = true;
-    private Clip menuMusicClip;
-    private Clip gameMusicClip;
-    private boolean menuMusicPlaying = false;
-    private boolean gameMusicPlaying = false;
-    private int damageFlashTimer = 0;
-    private int screenShakeTimer = 0;
+    // Player abilities and status
+    private boolean hasKeycard = false; // Did the player pick up the keycard?
+    private boolean speedBoostActive = false; // Is speed boost currently active?
+    private int speedBoostDuration = 0; // How long until speed boost wears off?
     
-    private boolean blinkState = false;
-    private int blinkTimer = 0;
-    
-    private int menuAnimationTimer = 0;
-    private boolean titleGlitch = false;
-    private int glitchTimer = 0;
+    // Game object collections - these hold all the entities in the game
+    private HashSet<Block> walls; // All the wall blocks you can't walk through
+    private HashSet<Item> items; // Collectible items like batteries and keycards
+    private HashSet<Hazard> hazards; // Dangerous things that hurt you
+    private Robot robot; // The player character
+    private Block exit; // The exit door you're trying to reach
 
+    // Game timing and control
+    Timer gameLoop; // Main game timer that updates everything
+    Timer previewTimer_obj; // Separate timer for the preview countdown
+    char[] directions = {'U', 'D', 'L', 'R'}; // Possible movement directions
+    Random random = new Random(); // Random number generator for various game elements
+    int score = 0; // Player's current score
+    boolean gameOver = false; // Did the player die?
+    boolean levelComplete = false; // Did the player beat the current level?
+    
+    // Sound and music
+    private boolean soundEnabled = true; // Is sound on or off?
+    private Clip menuMusicClip; // Music that plays in the main menu
+    private Clip gameMusicClip; // Music that plays during gameplay
+    private boolean menuMusicPlaying = false; // Is menu music currently playing?
+    private boolean gameMusicPlaying = false; // Is game music currently playing?
+    
+    // Visual effects timers
+    private int damageFlashTimer = 0; // Red flash when you take damage
+    private int screenShakeTimer = 0; // Screen shake effect when hit
+    
+    // Blinking animation (for UI elements)
+    private boolean blinkState = false; // Is the blink on or off right now?
+    private int blinkTimer = 0; // Counter for blinking timing
+    
+    // Menu animations
+    private int menuAnimationTimer = 0; // Counter for menu animations
+    private boolean titleGlitch = false; // Is the title doing its glitch effect?
+    private int glitchTimer = 0; // Timer for glitch effect
+
+    /**
+     * Constructor - this runs when the game first starts up.
+     * It sets up the window size, initializes the shop, and shows the main menu.
+     */
     FactoryMaze() {
         setPreferredSize(new Dimension(boardWidth, boardHeight));
         setBackground(Color.BLACK);
-        addKeyListener(this);
-        setFocusable(true);
+        addKeyListener(this); // Listen for keyboard input
+        setFocusable(true); // Make sure this window can receive keyboard input
 
-        initializeShop();
-        showMainMenu();
-        playMenuMusic(); 
+        loadProgress(); // Load saved data first
+        initializeShop(); // Set up all the shop items
+        showMainMenu(); // Go to the main menu
+        playMenuMusic(); // Start playing menu music
     }
     
+    /**
+     * Takes you back to the main menu.
+     * Resets menu flags and starts menu music.
+     */
     private void showMainMenu() {
         gameStarted = false;
         showDifficultySelect = false;
         
-        // ------- THIS IS THE MENU SOUND -------- //
-        playMenuMusic();
+        playMenuMusic(); // Start that sweet menu music
         
-        repaint();
+        repaint(); // Redraw the screen
     }
     
-    // NEW: Show difficulty selection screen
+    /**
+     * Shows the difficulty selection screen where you choose how hard you want it!
+     */
     private void showDifficultySelection() {
         showDifficultySelect = true;
         repaint();
     }
     
+    /**
+     * Shows the instructions/help screen so players know what to do.
+     */
     private void showInstructions() {
         showInstructions = true;
         repaint();
     }
     
-    // MODIFIED: Handle difficulty settings
+    /**
+     * This is the big one - starts a new game!
+     * Resets all the game state, applies upgrades, loads the first level.
+     */
     private void startGame() {
-    	stopMenuMusic();    // ------ THIS IS TO STOP MENU SOUND AND START GAME MUSIC ------- //
-        playGameMusic();
+    	stopMenuMusic(); // Stop the menu music
+        playGameMusic(); // Start the intense gameplay music
+        
+        // Reset all the game state flags
         gameStarted = true;
         showInstructions = false;
         showDifficultySelect = false;
@@ -517,116 +742,133 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         currentLevel = 0;
         score = 0;
         
-        maxBattery = 100 + (maxBatteryUpgrade * 20); // +20 per level
-        batteryLevel = maxBattery;
+        // Apply battery capacity upgrade
+        maxBattery = 100 + (maxBatteryUpgrade * 20); // +20 per upgrade level
+        batteryLevel = maxBattery; // Start with full battery
+        
         hasKeycard = false;
         gameOver = false;
         levelComplete = false;
         speedrunTimer = 0;
         
-        // Apply difficulty settings
+        // Apply difficulty settings - different modes change the rules!
         switch(selectedDifficulty) {
             case PERMADEATH:
-                currentLives = 1;
+                currentLives = 1; // One life only - hardcore!
                 break;
             case NORMAL:
             default:
-            	 currentLives = 3 + startingLivesUpgrade; //apply lives upgrade
+            	 currentLives = 3 + startingLivesUpgrade; // Apply lives upgrade
                 break;
         }
         
-        loadLevel();
+        loadLevel(); // Create the first level
         
-        // Skip preview if in blackout mode
+        // Show the map preview unless we're in blackout mode
         if (selectedDifficulty != DifficultyMode.BLACKOUT) {
             startPreview();
         } else {
-            previewMode = false;
+            previewMode = false; // No preview in blackout - you're going in blind
         }
         
         levelStartTime = 0;
         
+        // Start the main game loop - this updates everything 20 times per second (every 50ms)
         gameLoop = new Timer(50, this);
         gameLoop.start();
     }
     
+    /**
+     * Starts the map preview phase.
+     * Players get a brief look at the whole level before the darkness kicks in.
+     */
     private void startPreview() {
         previewMode = true;
+        // Get preview duration for current level (later levels have shorter previews!)
         previewTimer = previewDurations[Math.min(currentLevel, previewDurations.length - 1)];
         
+        // Create a separate timer just for counting down the preview
         previewTimer_obj = new Timer(50, e -> {
             previewTimer--;
             if (previewTimer <= 0) {
-                previewMode = false;
+                previewMode = false; // Preview's over - lights out!
                 previewTimer_obj.stop();
             }
-            repaint();
+            repaint(); // Update the display
         });
         previewTimer_obj.start();
     }
 
-    // MODIFIED: Track level start time for speedrun
+    /**
+     * This is where we actually build the level!
+     * Reads the level map string and creates all the walls, hazards, items, and the player.
+     */
     public void loadLevel() {
+        // Clear out any old level data
         walls = new HashSet<>();
         items = new HashSet<>();
         hazards = new HashSet<>();
         levelStartTime = speedrunTimer;
         
-        // Randomly select wall style
+        // Pick a random visual style for the walls
         String[] styles = {"STEEL", "RUST", "HAZARD", "GLOW", "TECH", "CONCRETE", "BRICK", "NEON", "CRYSTAL"};
         currentWallStyle = styles[random.nextInt(styles.length)];
         
-        // FIRST PASS: Create robot and walls
+        // FIRST PASS: Create the basic structure (walls, player, exit)
+        // We do this first because hazards need to know where the robot is
         for (int r = 0; r < rowCount; r++) {
-            String row = levelMaps[currentLevel][currentMapVariation][r]; // CHANGED THIS LINE
+            String row = levelMaps[currentLevel][currentMapVariation][r]; // Get this row of the map
             for (int c = 0; c < columnCount; c++) {
-                char tile = row.charAt(c);
-                int x = c * tileSize;
+                char tile = row.charAt(c); // Get the character at this position
+                int x = c * tileSize; // Convert grid position to pixel position
                 int y = r * tileSize;
 
+                // Create the appropriate object based on the character
                 switch(tile) {
-                    case 'X':
+                    case 'X': // Wall
                         walls.add(new Block(null, x, y, tileSize, tileSize));
                         break;
-                    case 'P':
+                    case 'P': // Player starting position
                         robot = new Robot(x, y, tileSize);
-                        robot.setSpeedUpgradeLevel(movementSpeedUpgrade);
+                        robot.setSpeedUpgradeLevel(movementSpeedUpgrade); // Apply speed upgrades
                         break;
-                    case 'E':
+                    case 'E': // Exit door
                         exit = new Block(null, x, y, tileSize, tileSize);
                         break;
                 }
             }
         }
         
-        // SECOND PASS: Create hazards and items (now robot exists)
+        // SECOND PASS: Create hazards and items
+        // Now we can create these because the robot already exists (hazards need to track the robot)
         for (int r = 0; r < rowCount; r++) {
-            String row = levelMaps[currentLevel][currentMapVariation][r]; // CHANGED THIS LINe
+            String row = levelMaps[currentLevel][currentMapVariation][r];
             for (int c = 0; c < columnCount; c++) {
                 char tile = row.charAt(c);
                 int x = c * tileSize;
                 int y = r * tileSize;
 
+                // Create hazards and items based on what's in the map
                 switch(tile) {
-                    case 'A':
+                    case 'A': // Acid pool - stay away from these
                         hazards.add(new Hazard(HazardType.ACID_POOL, x, y, tileSize, robot, walls));
                         break;
-                    case 'S':
+                    case 'S': // Electrical spark - zap
                         hazards.add(new Hazard(HazardType.ELECTRICAL_SPARK, x, y, tileSize, robot, walls));
                         break;
-                    case 'L':
+                    case 'L': // Laser barrier - deadly beams
                         hazards.add(new Hazard(HazardType.LASER_BARRIER, x, y, tileSize, robot, walls));
                         break;
-                    case 'R':
+                    case 'R': // Patrol bot - moves around and chases you
                         hazards.add(new Hazard(HazardType.PATROL_BOT, x, y, tileSize, robot, walls));
                         break;
-                    case 'M':
+                    case 'M': // Moving wall - slides back and forth
                         hazards.add(new Hazard(HazardType.MOVING_WALL, x, y, tileSize, robot, walls));
                         break;
-                    case 'B':
+                    case 'B': // Battery pickup - restores your flashlight
                         items.add(new Item(ItemType.BATTERY, x, y, tileSize));
                         break;
-                    case 'K':
+                    case 'K': // Keycard - needed to unlock the exit
                         items.add(new Item(ItemType.KEYCARD, x, y, tileSize));
                         break;
                 }
@@ -634,27 +876,37 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         }
     }
     
+    /**
+     * Opens up the upgrade shop where you can spend your hard-earned points!
+     */
     private void showShop() {
         showShop = true;
-        shopSelectedIndex = 0;
-        initializeShop(); // Refresh shop items
+        shopSelectedIndex = 0; // Start with first item selected
+        initializeShop(); // Refresh the shop to show current upgrade levels
         repaint();
     }
 
+    /**
+     * Buys the currently selected upgrade if you have enough points.
+     * Deducts the cost and applies the upgrade effect to your character.
+     */
     private void purchaseUpgrade() {
+        // Make sure we have a valid selection
         if (shopSelectedIndex < 0 || shopSelectedIndex >= shopItems.length) return;
         
         ShopItem item = shopItems[shopSelectedIndex];
         
+        // Can't buy if already maxed out
         if (item.isMaxed()) {
-            return; // Already maxed
+            return;
         }
         
+        // Check if player has enough points
         if (totalPoints >= item.getCost()) {
-            totalPoints -= item.getCost();
-            item.currentLevel++;
+            totalPoints -= item.getCost(); // Take the money
+            item.currentLevel++; // Increase the upgrade level
             
-            // Apply upgrade
+            // Apply the upgrade to the actual game stats
             switch(item.stat) {
                 case "DRAIN":
                     batteryDrainUpgrade = item.currentLevel;
@@ -673,21 +925,37 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
                     break;
             }
             
-            repaint();
+            saveProgress(); //Save after every purchase
+            repaint(); // Update the display to show new level
         }
     }
 
-    // MODIFIED: Handle difficulty select screen
+    /**
+     * This is the main drawing function - it draws everything on screen!
+     * Called automatically whenever repaint() is called.
+     */
     public void paintComponent(Graphics g) {
         super.paintComponent(g);
-        Graphics2D g2 = (Graphics2D)g;
+        Graphics2D g2 = (Graphics2D)g; // Use Graphics2D for better rendering
+        // Turn on antialiasing to make things look smoother
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         
+        // If game hasn't started yet, show menus instead
         if (!gameStarted) {
             if (showShop) {  
                 drawShop(g2);
+                
+                if (showResetConfirmation) {
+                    drawResetConfirmation(g2);
+                }
                 return;
             }
+            
+            
+            if (showInstructions) {  
+                drawInstructions(g2);
+                return;
+            }  
             if (showDifficultySelect) {
                 drawDifficultySelection(g2);
             } else {
@@ -696,51 +964,61 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             return;
         }
         
+        // If we're showing instructions, draw those and nothing else
         if (showInstructions) {
             drawInstructions(g2);
             return;
         }
         
+        // Update blinking animation for UI elements
         blinkTimer++;
-        if (blinkTimer >= 10) {
+        if (blinkTimer >= 10) { // Every 10 frames, toggle the blink
             blinkState = !blinkState;
             blinkTimer = 0;
         }
         
-     // SCREEN SHAKE
+        // SCREEN SHAKE EFFECT when player takes damage
         int shakeX = 0, shakeY = 0;
         if (screenShakeTimer > 0) {
-            shakeX = random.nextInt(8) - 4;  // Shake between -4 and +4 pixels
+            // Random small offset to shake the screen
+            shakeX = random.nextInt(8) - 4;  // Between -4 and +4 pixels
             shakeY = random.nextInt(8) - 4;
-            g2.translate(shakeX, shakeY);
+            g2.translate(shakeX, shakeY); // Move everything slightly
         }
         
+        // Draw the dark background
         g2.setColor(new Color(20, 20, 30));
         g2.fillRect(0, 0, boardWidth, boardHeight);
         
+        // In preview mode, show everything lit up
         if (previewMode) {
-            drawAllElements(g2, false);
+            drawAllElements(g2, false); // false = no darkness
             
+            // Draw the preview timer at the top
             g2.setColor(new Color(255, 255, 0, 200));
             g2.setFont(new Font("Trebuchet MS", Font.BOLD, 24));
             String previewText = "Memory Preview: " + (previewTimer / 20 + 1) + "s";
             int textWidth = g2.getFontMetrics().stringWidth(previewText);
+            // Yellow box behind the text
             g2.fillRoundRect((boardWidth - textWidth) / 2 - 10, 115, textWidth + 20, 35, 10, 10);
             g2.setColor(Color.BLACK);
             g2.drawString(previewText, (boardWidth - textWidth) / 2, 140);
         } else {
-            drawAllElements(g2, true);
+            // Normal gameplay - use darkness with flashlight effect
+            drawAllElements(g2, true); // true = apply darkness
         }
         
+        // Draw the heads-up display (battery, score, etc.)
         drawHUD(g2);
         
-     //  DAMAGE FLASH OVERLAY
+        // DAMAGE FLASH - Red overlay when you get hit
         if (damageFlashTimer > 0) {
-            int alpha = (int)(150 * (damageFlashTimer / 15.0));  // Fade out
+            // Fade out over time
+            int alpha = (int)(150 * (damageFlashTimer / 15.0));
             g2.setColor(new Color(255, 0, 0, alpha));
             g2.fillRect(0, 0, boardWidth, boardHeight);
             
-            // Damage text
+            // Show damage text briefly
             if (damageFlashTimer > 5) {
                 g2.setColor(Color.WHITE);
                 g2.setFont(new Font("DialogInput", Font.BOLD, 32));
@@ -750,11 +1028,12 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             }
         }
 
-        //UNDO SCREEN SHAKE
+        // Undo the screen shake so UI elements don't shake
         if (screenShakeTimer > 0) {
             g2.translate(-shakeX, -shakeY);
         }
         
+        // Draw special overlays for level complete or game over
         if (levelComplete) {
             drawLevelComplete(g2);
         }
@@ -768,11 +1047,15 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         }
     }
     
-    // MODIFIED: Added difficulty button
+    /**
+     * Draws the main menu screen with the cool animated title and all the buttons.
+     */
     private void drawMainMenu(Graphics2D g2) {
+        // Increment animation counters
         menuAnimationTimer++;
         glitchTimer++;
         
+        // Occasionally glitch the title for that cool cyber effect
         if (glitchTimer >= 150) {
             titleGlitch = true;
             if (glitchTimer >= 160) {
@@ -781,9 +1064,11 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             }
         }
         
+        // Dark background
         g2.setColor(new Color(15, 20, 25));
         g2.fillRect(0, 0, boardWidth, boardHeight);
         
+        // Draw grid pattern for that tech aesthetic
         g2.setColor(new Color(30, 35, 40));
         for (int x = 0; x < boardWidth; x += 40) {
             g2.drawLine(x, 0, x, boardHeight);
@@ -792,15 +1077,18 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             g2.drawLine(0, y, boardWidth, y);
         }
         
+        // Animated scanline effect (moves down the screen)
         int scanlineY = (menuAnimationTimer * 3) % boardHeight;
         g2.setColor(new Color(0, 150, 200, 50));
         g2.fillRect(0, scanlineY, boardWidth, 2);
         
+        // Draw the game title with glitch effect
         g2.setFont(new Font("Courier New", Font.BOLD, 48));
         String title = "FACTORY OUTAGE";
         int titleWidth = g2.getFontMetrics().stringWidth(title);
         int titleX = (boardWidth - titleWidth) / 2;
         
+        // When glitching, draw offset colored copies
         if (titleGlitch) {
             g2.setColor(new Color(255, 0, 0, 150));
             g2.drawString(title, titleX - 2, 120);
@@ -808,15 +1096,18 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             g2.drawString(title, titleX + 2, 120);
         }
         
+        // Main title text
         g2.setColor(new Color(255, 120, 0));
         g2.drawString(title, titleX, 120);
         
+        // Subtitle
         g2.setFont(new Font("Courier New", Font.ITALIC, 20));
         g2.setColor(new Color(100, 200, 255));
         String subtitle = "Memory Escape Protocol";
         int subtitleWidth = g2.getFontMetrics().stringWidth(subtitle);
         g2.drawString(subtitle, (boardWidth - subtitleWidth) / 2, 150);
         
+        // Blinking warning message
         g2.setFont(new Font("Courier New", Font.BOLD, 14));
         boolean warningBlink = (menuAnimationTimer / 15) % 2 == 0;
         if (warningBlink) {
@@ -826,20 +1117,25 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             g2.drawString(warning, (boardWidth - warningWidth) / 2, 180);
         }
         
+        // Draw animated robot sprite with bobbing motion
         int robotX = boardWidth / 2 - 25;
-        int robotY = 200 + (int)(Math.sin(menuAnimationTimer * 0.1) * 3);
+        int robotY = 200 + (int)(Math.sin(menuAnimationTimer * 0.1) * 3); // Sine wave for bobbing
         
+        // Robot body
         g2.setColor(new Color(80, 120, 180));
         g2.fillRoundRect(robotX, robotY, 50, 50, 10, 10);
         
+        // Robot eyes that occasionally blink
         boolean eyeBlink = (menuAnimationTimer / 30) % 10 == 0;
         g2.setColor(eyeBlink ? new Color(100, 100, 100) : new Color(0, 255, 150));
         g2.fillOval(robotX + 10, robotY + 15, 8, 8);
         g2.fillOval(robotX + 32, robotY + 15, 8, 8);
         
+        // Robot mouth
         g2.setColor(new Color(255, 200, 0));
         g2.fillRect(robotX + 15, robotY + 35, 20, 4);
         
+        // Battery indicator on robot with pulsing animation
         g2.setColor(new Color(40, 40, 50));
         g2.fillRoundRect(robotX + 10, robotY + 60, 30, 8, 4, 4);
         
@@ -847,35 +1143,41 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         g2.setColor(batteryWidth > 15 ? new Color(0, 255, 0) : new Color(255, 255, 0));
         g2.fillRoundRect(robotX + 12, robotY + 62, batteryWidth, 4, 2, 2);
         
+        // Menu buttons
         g2.setFont(new Font("Courier New", Font.BOLD, 16));
         
+        // Start game button
         g2.setColor(new Color(0, 255, 100));
         g2.fillRoundRect((boardWidth - 280) / 2, 320, 280, 35, 8, 8);
         g2.setColor(new Color(0, 0, 0));
         g2.drawString("► INITIATE ESCAPE SEQUENCE", (boardWidth - 260) / 2, 342);
         
-        // NEW: Difficulty selection button
+        // Difficulty selection button
         g2.setColor(new Color(255, 200, 0));
         g2.fillRoundRect((boardWidth - 280) / 2, 365, 280, 35, 8, 8);
         g2.setColor(new Color(0, 0, 0));
         String diffText = "► DIFFICULTY: " + selectedDifficulty.name.toUpperCase();
         g2.drawString(diffText, (boardWidth - 260) / 2, 387);
         
+        // Instructions button
         g2.setColor(new Color(100, 150, 255));
         g2.fillRoundRect((boardWidth - 280) / 2, 410, 280, 35, 8, 8);
         g2.setColor(new Color(0, 0, 0));
         g2.drawString("► SYSTEM PROTOCOLS", (boardWidth - 200) / 2, 432);
         
+        // Shop button
         g2.setColor(new Color(0, 200, 150));
         g2.fillRoundRect((boardWidth - 280) / 2, 455, 280, 35, 8, 8);
         g2.setColor(new Color(0, 0, 0));
         g2.drawString("► UPGRADE SHOP", (boardWidth - 180) / 2, 477);
         
+        // Exit button
         g2.setColor(new Color(255, 100, 100));
-        g2.fillRoundRect((boardWidth - 280) / 2, 455, 280, 35, 8, 8);
+        g2.fillRoundRect((boardWidth - 280) / 2, 500, 280, 35, 8, 8);
         g2.setColor(new Color(0, 0, 0));
-        g2.drawString("► EMERGENCY SHUTDOWN", (boardWidth - 220) / 2, 477);
+        g2.drawString("► EMERGENCY SHUTDOWN", (boardWidth - 220) / 2, 522);    
         
+        // Control hints at the bottom
         g2.setFont(new Font("Courier New", Font.PLAIN, 12));
         g2.setColor(new Color(150, 150, 150));
         g2.drawString("SPACE - Start Game", 50, boardHeight - 100);
@@ -884,12 +1186,13 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         g2.drawString("I - Instructions", 50, boardHeight - 40);
         g2.drawString("ESC - Exit", 50, boardHeight - 20);
         
+        // Status info
         g2.setColor(new Color(0, 255, 200));
         g2.drawString("TERMINAL STATUS: ONLINE", boardWidth - 200, boardHeight - 40);
         g2.setColor(new Color(255, 200, 0));
         g2.drawString("POWER: CRITICAL", boardWidth - 200, boardHeight - 20);
         
-     // MUSIC INDICATOR
+        // Music indicator
         if (soundEnabled && menuMusicPlaying) {
             g2.setColor(new Color(0, 255, 100));
             g2.drawString("♪ MUSIC: ONLINE", 50, boardHeight - 120);
@@ -899,8 +1202,12 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         }
     }
     
-    // NEW: Draw difficulty selection screen
+    /**
+     * Draws the difficulty selection screen.
+     * Shows all available difficulty modes and highlights the selected one.
+     */
     private void drawDifficultySelection(Graphics2D g2) {
+        // Background and grid (same as main menu for consistency)
         g2.setColor(new Color(15, 20, 25));
         g2.fillRect(0, 0, boardWidth, boardHeight);
         
@@ -912,22 +1219,26 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             g2.drawLine(0, y, boardWidth, y);
         }
         
+        // Title
         g2.setColor(new Color(255, 120, 0));
         g2.setFont(new Font("Courier New", Font.BOLD, 32));
         String title = "SELECT DIFFICULTY";
         int titleWidth = g2.getFontMetrics().stringWidth(title);
         g2.drawString(title, (boardWidth - titleWidth) / 2, 60);
         
+        // Draw each difficulty option
         int yPos = 120;
-        int spacing = 100;
+        int spacing = 100; // Space between each option
         
         for (DifficultyMode mode : DifficultyMode.values()) {
             boolean isSelected = (mode == selectedDifficulty);
             
+            // Background box (highlight if selected)
             Color boxColor = isSelected ? new Color(0, 150, 255, 100) : new Color(50, 50, 60, 150);
             g2.setColor(boxColor);
             g2.fillRoundRect(50, yPos - 30, boardWidth - 100, 80, 15, 15);
             
+            // Border for selected option
             if (isSelected) {
                 g2.setColor(new Color(0, 200, 255));
                 g2.setStroke(new BasicStroke(3));
@@ -935,11 +1246,13 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
                 g2.setStroke(new BasicStroke(1));
             }
             
+            // Difficulty name with color coding
             g2.setFont(new Font("Courier New", Font.BOLD, 20));
             Color textColor = getDifficultyColor(mode);
             g2.setColor(textColor);
             g2.drawString(mode.name, 70, yPos);
             
+            // Description
             g2.setFont(new Font("Courier New", Font.PLAIN, 14));
             g2.setColor(new Color(200, 200, 200));
             g2.drawString(mode.description, 70, yPos + 25);
@@ -947,23 +1260,31 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             yPos += spacing;
         }
         
+        // Controls hint
         g2.setFont(new Font("Courier New", Font.BOLD, 16));
         g2.setColor(new Color(0, 255, 100));
         g2.drawString("↑↓ - Select    SPACE - Confirm    ESC - Back", 60, boardHeight - 30);
     }
     
-    // NEW: Get color for each difficulty
+    /**
+     * Returns the appropriate color for each difficulty mode.
+     * Makes it easy to tell them apart at a glance!
+     */
     private Color getDifficultyColor(DifficultyMode mode) {
         switch(mode) {
-            case NORMAL: return new Color(100, 255, 100);
-            case PERMADEATH: return new Color(255, 100, 100);
-            case BLACKOUT: return new Color(150, 100, 255);
-            case SPEEDRUN: return new Color(255, 200, 0);
+            case NORMAL: return new Color(100, 255, 100); // Green = easy/normal
+            case PERMADEATH: return new Color(255, 100, 100); // Red = danger!
+            case BLACKOUT: return new Color(150, 100, 255); // Purple = mysterious
+            case SPEEDRUN: return new Color(255, 200, 0); // Yellow = fast!
             default: return Color.WHITE;
         }
     }
     
+    /**
+     * Draws the instructions screen explaining how to play and what everything means.
+     */
     private void drawInstructions(Graphics2D g2) {
+        // Same background as other menus
         g2.setColor(new Color(15, 20, 25));
         g2.fillRect(0, 0, boardWidth, boardHeight);
         
@@ -975,14 +1296,15 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             g2.drawLine(0, y, boardWidth, y);
         }
         
+        // Title
         g2.setColor(new Color(255, 120, 0));
         g2.setFont(new Font("Courier New", Font.BOLD, 28));
         String title = "SYSTEM PROTOCOLS";
         int titleWidth = g2.getFontMetrics().stringWidth(title);
         g2.drawString(title, (boardWidth - titleWidth) / 2, 50);
         
+        // MISSION BRIEFING section
         g2.setFont(new Font("Courier New", Font.BOLD, 16));
-        
         g2.setColor(new Color(0, 255, 100));
         g2.drawString("MISSION BRIEFING:", 50, 90);
         g2.setFont(new Font("Courier New", Font.PLAIN, 14));
@@ -998,6 +1320,7 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             g2.drawString(mission[i], 70, 110 + i * 20);
         }
         
+        // HAZARD PROTOCOLS section - color-coded by danger type
         g2.setFont(new Font("Courier New", Font.BOLD, 16));
         g2.setColor(new Color(255, 100, 100));
         g2.drawString("HAZARD PROTOCOLS:", 50, 230);
@@ -1011,6 +1334,7 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         g2.setColor(new Color(255, 150, 100));
         g2.drawString("• Patrol Bots (R): Automated security", 70, 310);
         
+        // RESOURCE MANAGEMENT section
         g2.setFont(new Font("Courier New", Font.BOLD, 16));
         g2.setColor(new Color(100, 200, 255));
         g2.drawString("RESOURCE MANAGEMENT:", 50, 350);
@@ -1022,6 +1346,7 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         g2.setColor(new Color(100, 255, 255));
         g2.drawString("• Speed Boost (S): Enhanced mobility", 70, 410);
         
+        // CONTROL INTERFACE section
         g2.setFont(new Font("Courier New", Font.BOLD, 16));
         g2.setColor(new Color(200, 200, 255));
         g2.drawString("CONTROL INTERFACE:", 50, 450);
@@ -1031,33 +1356,51 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         g2.drawString("• P: Pause System", 70, 490);
         g2.drawString("• R: System Restart", 70, 510);
         g2.drawString("• M: Toggle Sound", 70, 530); 
-        g2.drawString("• ESC: Emergency Exit", 70, 530);
+        g2.drawString("• ESC: Emergency Exit", 70, 550); // X axis and Y axis
+        
+        // Return instruction
+        g2.setFont(new Font("Courier New", Font.BOLD, 16));
+        g2.setColor(new Color(0, 255, 100));
+        String returnText = "SPACE - Continue the Game";
+        int returnWidth = g2.getFontMetrics().stringWidth(returnText);
+        g2.drawString(returnText, (boardWidth - returnWidth) / 2, boardHeight - 30);
         
         g2.setFont(new Font("Courier New", Font.BOLD, 16));
         g2.setColor(new Color(0, 255, 100));
-        String returnText = "SPACE - Return to Main Terminal";
-        int returnWidth = g2.getFontMetrics().stringWidth(returnText);
-        g2.drawString(returnText, (boardWidth - returnWidth) / 2, boardHeight - 30);
+        String returnText1 = "ESC - Return to Main Menu";
+        int returnWidth1 = g2.getFontMetrics().stringWidth(returnText1);
+        g2.drawString(returnText1, (boardWidth - returnWidth1) / 2, boardHeight - 50);
     }
     
     private void drawAllElements(Graphics2D g2, boolean limitedVision) {
         Shape originalClip = null;
+        
+        // If we're using limited vision and have battery, create a circular "flashlight"
         if (limitedVision && batteryLevel > 0) {
-            originalClip = g2.getClip();
-            int baseVision = VISION_RADIUS + (visionRangeUpgrade * 15); // +15 per level
-            int visionRadius = (int)(baseVision * (batteryLevel / 100.0));
+            originalClip = g2.getClip(); // Save the original drawing area
+            
+            // Calculate vision radius based on battery level and upgrades
+            int baseVision = VISION_RADIUS + (visionRangeUpgrade * 15); // +15 pixels per upgrade level
+            int visionRadius = (int)(baseVision * (batteryLevel / 100.0)); // Shrinks as battery drains
+            
+            // Create a circular clipping area centered on the player
             g2.setClip(new java.awt.geom.Ellipse2D.Float(
-                robot.x + robot.width/2 - visionRadius,
-                robot.y + robot.height/2 - visionRadius,
-                visionRadius * 2,
-                visionRadius * 2
+                robot.x + robot.width/2 - visionRadius,  // Center horizontally on player
+                robot.y + robot.height/2 - visionRadius, // Center vertically on player
+                visionRadius * 2, // Diameter (width)
+                visionRadius * 2  // Diameter (height)
             ));
         }
         
+        // Draw all the walls with the selected visual style
         for (Block wall : walls) {
-            String currentStyle = wallStyles[currentLevel]; // Use level-based style
+            // Pick the wall style based on what level we're on
+            String currentStyle = wallStyles[currentLevel];
+            
+            // Each case creates a different visual appearance for the walls
             switch (currentStyle) {
                 case "STEEL":
+                    // Metallic gradient - looks like steel plating
                     GradientPaint steel = new GradientPaint(
                         wall.x, wall.y, new Color(60, 60, 65),
                         wall.x + wall.width, wall.y + wall.height, new Color(120, 120, 130)
@@ -1069,182 +1412,187 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
                     break;
 
                 case "HAZARD":
+                    // Warning stripes style - yellow border on dark background
                     g2.setColor(new Color(30, 30, 30));
                     g2.fillRect(wall.x, wall.y, wall.width, wall.height);
-                    g2.setColor(new Color(255, 200, 0));
-                    g2.setStroke(new BasicStroke(3));
+                    g2.setColor(new Color(255, 200, 0)); // Warning yellow
+                    g2.setStroke(new BasicStroke(3)); // Thick border
                     g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
-                    g2.setStroke(new BasicStroke(1));
+                    g2.setStroke(new BasicStroke(1)); // Reset to normal thickness
                     break;
 
                 case "GLOW":
+                    // Sci-fi glowing effect - dark with bright cyan edges
                     g2.setColor(new Color(10, 10, 30));
                     g2.fillRect(wall.x, wall.y, wall.width, wall.height);
-                    g2.setColor(new Color(0, 200, 255));
+                    g2.setColor(new Color(0, 200, 255)); // Bright cyan outer glow
                     g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
-                    g2.setColor(new Color(0, 120, 200));
+                    g2.setColor(new Color(0, 120, 200)); // Darker cyan inner glow
                     g2.drawRect(wall.x + 1, wall.y + 1, wall.width - 3, wall.height - 3);
                     break;
 
                 case "RUST":
+                    // Rusty old metal - orange-brown gradient with scratches
                     GradientPaint rust = new GradientPaint(
                         wall.x, wall.y, new Color(90, 45, 30),
                         wall.x, wall.y + wall.height, new Color(140, 70, 50)
                     );
                     g2.setPaint(rust);
                     g2.fillRect(wall.x, wall.y, wall.width, wall.height);
+                    // Add a diagonal scratch line for texture
                     g2.setColor(new Color(60, 30, 20));
                     g2.drawLine(wall.x + 2, wall.y + 2, wall.x + wall.width - 2, wall.y + wall.height - 2);
                     g2.setColor(Color.BLACK);
                     g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
                     break;
                     
-                // NEW STYLES BELOW:
-                
                 case "CONCRETE":
+                    // Concrete texture with speckles
                     g2.setColor(new Color(80, 80, 85));
                     g2.fillRect(wall.x, wall.y, wall.width, wall.height);
-                    // Add concrete texture with random dots
+                    // Add random dots to simulate concrete texture
                     g2.setColor(new Color(60, 60, 65));
                     for (int i = 0; i < 5; i++) {
                         int dotX = wall.x + (int)(Math.random() * wall.width);
                         int dotY = wall.y + (int)(Math.random() * wall.height);
-                        g2.fillRect(dotX, dotY, 1, 1);
+                        g2.fillRect(dotX, dotY, 1, 1); // Single pixel dots
                     }
                     g2.setColor(new Color(50, 50, 55));
                     g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
                     break;
                     
                 case "BRICK":
-                    // Red brick background
-                    g2.setColor(new Color(120, 40, 40));
+                    // Red brick wall pattern
+                    g2.setColor(new Color(120, 40, 40)); // Dark red brick
                     g2.fillRect(wall.x, wall.y, wall.width, wall.height);
-                    // Draw brick pattern
+                    // Draw brick pattern lines
                     g2.setColor(new Color(90, 30, 30));
-                    g2.drawLine(wall.x, wall.y + wall.height/2, wall.x + wall.width, wall.y + wall.height/2);
-                    g2.drawLine(wall.x + wall.width/2, wall.y, wall.x + wall.width/2, wall.y + wall.height/2);
-                    g2.drawLine(wall.x + wall.width/4, wall.y + wall.height/2, wall.x + wall.width/4, wall.y + wall.height);
-                    g2.drawLine(wall.x + 3*wall.width/4, wall.y + wall.height/2, wall.x + 3*wall.width/4, wall.y + wall.height);
-                    // Mortar lines
+                    g2.drawLine(wall.x, wall.y + wall.height/2, wall.x + wall.width, wall.y + wall.height/2); // Horizontal middle
+                    g2.drawLine(wall.x + wall.width/2, wall.y, wall.x + wall.width/2, wall.y + wall.height/2); // Vertical middle top
+                    g2.drawLine(wall.x + wall.width/4, wall.y + wall.height/2, wall.x + wall.width/4, wall.y + wall.height); // Quarter left bottom
+                    g2.drawLine(wall.x + 3*wall.width/4, wall.y + wall.height/2, wall.x + 3*wall.width/4, wall.y + wall.height); // Quarter right bottom
+                    // Gray mortar lines around the edges
                     g2.setColor(new Color(160, 160, 160));
                     g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
                     break;
                     
                 case "TECH":
-                    // Futuristic tech panels
+                    // Futuristic tech panels with circuit-like lines
                     GradientPaint tech = new GradientPaint(
                         wall.x, wall.y, new Color(20, 30, 50),
                         wall.x, wall.y + wall.height, new Color(40, 60, 90)
                     );
                     g2.setPaint(tech);
                     g2.fillRect(wall.x, wall.y, wall.width, wall.height);
-                    // Circuit lines
-                    g2.setColor(new Color(0, 150, 255, 150));
+                    // Circuit-like horizontal lines
+                    g2.setColor(new Color(0, 150, 255, 150)); // Semi-transparent cyan
                     g2.drawLine(wall.x + 4, wall.y + 4, wall.x + wall.width - 4, wall.y + 4);
                     g2.drawLine(wall.x + 4, wall.y + wall.height - 4, wall.x + wall.width - 4, wall.y + wall.height - 4);
-                    g2.setColor(new Color(0, 200, 255));
+                    g2.setColor(new Color(0, 200, 255)); // Bright cyan border
                     g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
                     break;
                     
                 case "CAUTION":
-                    // Yellow and black warning stripes
-                    g2.setColor(new Color(40, 40, 40));
+                    // Warning stripes - diagonal yellow and black pattern
+                    g2.setColor(new Color(40, 40, 40)); // Dark background
                     g2.fillRect(wall.x, wall.y, wall.width, wall.height);
-                    g2.setColor(new Color(255, 200, 0));
-                    // Diagonal stripes
+                    g2.setColor(new Color(255, 200, 0)); // Warning yellow
+                    // Draw diagonal stripes across the wall
                     for (int i = -wall.height; i < wall.width; i += 8) {
                         int x1 = wall.x + i;
                         int y1 = wall.y;
                         int x2 = wall.x + i + wall.height;
                         int y2 = wall.y + wall.height;
-                        g2.setStroke(new BasicStroke(4));
+                        g2.setStroke(new BasicStroke(4)); // Thick stripes
                         g2.drawLine(x1, y1, x2, y2);
                     }
-                    g2.setStroke(new BasicStroke(1));
+                    g2.setStroke(new BasicStroke(1)); // Reset stroke
                     break;
                     
                 case "ICE":
-                    // Frozen/ice walls
+                    // Frozen ice walls - light blue with sparkles
                     GradientPaint ice = new GradientPaint(
                         wall.x, wall.y, new Color(200, 220, 255),
                         wall.x + wall.width, wall.y + wall.height, new Color(150, 180, 230)
                     );
                     g2.setPaint(ice);
                     g2.fillRect(wall.x, wall.y, wall.width, wall.height);
-                    // Ice crystals
-                    g2.setColor(new Color(255, 255, 255, 100));
-                    g2.drawLine(wall.x + 5, wall.y + 5, wall.x + 10, wall.y + 10);
-                    g2.drawLine(wall.x + wall.width - 10, wall.y + 5, wall.x + wall.width - 5, wall.y + 10);
-                    g2.setColor(new Color(180, 200, 255));
+                    // Ice crystal sparkles in the corners
+                    g2.setColor(new Color(255, 255, 255, 100)); // Semi-transparent white
+                    g2.drawLine(wall.x + 5, wall.y + 5, wall.x + 10, wall.y + 10); // Top left sparkle
+                    g2.drawLine(wall.x + wall.width - 10, wall.y + 5, wall.x + wall.width - 5, wall.y + 10); // Top right sparkle
+                    g2.setColor(new Color(180, 200, 255)); // Light blue border
                     g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
                     break;
                     
                 case "LAVA":
-                    // Lava/volcanic rock
+                    // Volcanic rock with glowing cracks
                     GradientPaint lava = new GradientPaint(
                         wall.x, wall.y, new Color(60, 20, 10),
                         wall.x, wall.y + wall.height, new Color(40, 10, 5)
                     );
                     g2.setPaint(lava);
                     g2.fillRect(wall.x, wall.y, wall.width, wall.height);
-                    // Glowing cracks
-                    g2.setColor(new Color(255, 100, 0, 150));
+                    // Glowing crack in the middle (like lava seeping through)
+                    g2.setColor(new Color(255, 100, 0, 150)); // Semi-transparent orange
                     g2.drawLine(wall.x + 3, wall.y + wall.height/2, wall.x + wall.width - 3, wall.y + wall.height/2);
-                    g2.setColor(new Color(255, 50, 0));
+                    g2.setColor(new Color(255, 50, 0)); // Bright orange-red border
                     g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
                     break;
                     
                 case "NEON":
-                    // Cyberpunk neon style
-                    g2.setColor(new Color(10, 10, 15));
+                    // Cyberpunk neon style with pulsing effect
+                    g2.setColor(new Color(10, 10, 15)); // Nearly black background
                     g2.fillRect(wall.x, wall.y, wall.width, wall.height);
-                    // Pulsing neon effect (based on timer)
-                    int brightness = 150 + (int)(50 * Math.sin(System.currentTimeMillis() / 200.0));
-                    g2.setColor(new Color(255, 0, brightness, 200));
+                    // Pulsing neon effect (brightness changes over time)
+                    int brightness = 150 + (int)(50 * Math.sin(System.currentTimeMillis() / 200.0)); // Oscillates between 100-200
+                    g2.setColor(new Color(255, 0, brightness, 200)); // Pink-purple neon
                     g2.setStroke(new BasicStroke(2));
-                    g2.drawRect(wall.x + 2, wall.y + 2, wall.width - 5, wall.height - 5);
+                    g2.drawRect(wall.x + 2, wall.y + 2, wall.width - 5, wall.height - 5); // Inset border
                     g2.setStroke(new BasicStroke(1));
                     break;
                     
                 case "WOOD":
-                    // Wooden planks
-                    g2.setColor(new Color(100, 60, 30));
+                    // Wooden plank texture
+                    g2.setColor(new Color(100, 60, 30)); // Brown wood
                     g2.fillRect(wall.x, wall.y, wall.width, wall.height);
-                    // Wood grain
+                    // Vertical wood grain lines
                     g2.setColor(new Color(80, 50, 25));
                     g2.drawLine(wall.x + 2, wall.y, wall.x + 2, wall.y + wall.height);
                     g2.drawLine(wall.x + wall.width - 3, wall.y, wall.x + wall.width - 3, wall.y + wall.height);
-                    g2.setColor(new Color(70, 40, 20));
+                    g2.setColor(new Color(70, 40, 20)); // Dark brown border
                     g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
                     break;
                     
                 case "CRYSTAL":
-                    // Crystal/gem walls
+                    // Magical crystal walls - purple with facets
                     GradientPaint crystal = new GradientPaint(
                         wall.x, wall.y, new Color(150, 100, 200),
                         wall.x + wall.width, wall.y + wall.height, new Color(100, 50, 150)
                     );
                     g2.setPaint(crystal);
                     g2.fillRect(wall.x, wall.y, wall.width, wall.height);
-                    // Crystal facets
-                    g2.setColor(new Color(200, 150, 255, 100));
-                    g2.drawLine(wall.x, wall.y, wall.x + wall.width, wall.y + wall.height);
-                    g2.drawLine(wall.x + wall.width, wall.y, wall.x, wall.y + wall.height);
-                    g2.setColor(new Color(180, 120, 220));
+                    // Crystal facet lines (X pattern)
+                    g2.setColor(new Color(200, 150, 255, 100)); // Light purple, semi-transparent
+                    g2.drawLine(wall.x, wall.y, wall.x + wall.width, wall.y + wall.height); // Diagonal \
+                    g2.drawLine(wall.x + wall.width, wall.y, wall.x, wall.y + wall.height); // Diagonal /
+                    g2.setColor(new Color(180, 120, 220)); // Purple border
                     g2.drawRect(wall.x, wall.y, wall.width - 1, wall.height - 1);
                     break;
             }
         }
         
-
-        g2.setColor(hasKeycard ? Color.GREEN : Color.RED);
+        // Draw the exit door - changes color based on whether you have the keycard
+        g2.setColor(hasKeycard ? Color.GREEN : Color.RED); // Green if unlocked, red if locked
         g2.fillRect(exit.x + 4, exit.y + 4, exit.width - 8, exit.height - 8);
         g2.setColor(Color.WHITE);
         g2.drawString("EXIT", exit.x + 2, exit.y + 20);
         
+        // Draw all collectible items (batteries, keycards, etc.)
         for (Item item : items) {
+            // Only draw if not collected yet, and only when the blink is "on" (creates pulsing effect)
             if (!item.collected && blinkState) {
-                g2.setColor(item.getColor());
+                g2.setColor(item.getColor()); // Each item type has its own color
                 g2.fillOval(item.x + tileSize/4, item.y + tileSize/4, item.width, item.height);
                 g2.setColor(Color.WHITE);
                 g2.setFont(new Font("DialogInput", Font.BOLD, 12));
@@ -1252,121 +1600,163 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             }
         }
         
-     // POLYMORPHISM IN ACTION! Each hazard draws itself
+        // POLYMORPHISM IN ACTION! Each hazard knows how to draw itself
+        // We just call draw() and each hazard type handles its own appearance
         for (Hazard hazard : hazards) {
-            hazard.draw(g2);  // ← Calls the appropriate draw() method for each hazard type
+            hazard.draw(g2);
         }
         
-     // POLYMORPHISM! Robot draws itself
+        // POLYMORPHISM - Robot draws itself
         robot.draw(g2);
         
+        // Restore the original clipping area if we changed it for the flashlight effect
         if (limitedVision && originalClip != null) {
             g2.setClip(originalClip);
         }
     }
     
-    // MODIFIED: Added difficulty indicators and speedrun timer
+    /**
+     * Draws the Heads-Up Display (HUD) - all the UI info at the top of the screen.
+     * Shows level number, score, battery, difficulty mode, and any active powerups.
+     */
     private void drawHUD(Graphics2D g2) {
-        g2.setColor(new Color(0, 0, 0, 180)); // R G B B/Transparent
-        g2.fillRoundRect(10, 8, 300, 65, 15, 15); //1st is X axis 2nd is Y axis 
-              									  //3rd is length 4th is height 
-        									      //5th is hoe round the top and bottom 6th is how round the sides
+        // Semi-transparent black background box for the HUD
+        g2.setColor(new Color(0, 0, 0, 180)); // Last number is transparency (0=invisible, 255=solid)
+        g2.fillRoundRect(10, 8, 300, 65, 15, 15); // Rounded rectangle container
         
+        // Basic info - level and score
         g2.setFont(new Font("DialogInput", Font.BOLD, 14));
         g2.setColor(Color.WHITE);
-        g2.drawString("Level: " + (currentLevel + 1) + "/4", 20, 25); // X axis, Y  axis
+        g2.drawString("Level: " + (currentLevel + 1) + "/4", 20, 25); // +1 because we count from 0
         g2.drawString("Score: " + score, 20, 45);
         
+        // Show difficulty mode in its own color
         g2.setColor(getDifficultyColor(selectedDifficulty));
         g2.drawString(selectedDifficulty.name, 20, 65);
         
+        // Battery meter
         g2.setColor(Color.WHITE);
         g2.drawString("Battery:", 125, 25);
-        g2.setColor(batteryLevel > 20 ? Color.GREEN : Color.RED);
-        g2.fillRect(200, 15, (int)(batteryLevel * 1), 12); // X axis Y axis Length of green battery then height 
+        // Battery fill color - green if healthy, red if low
+        g2.setColor(batteryLevel > 20 ? Color.GREEN : Color.RED); 
+        g2.fillRect(200, 15, (int)(batteryLevel * 1), 12); // Bar length matches battery percentage
         g2.setColor(Color.WHITE);
-        g2.drawRect(200, 15, 100, 12); // X axis Y axis Length then Height
+        g2.drawRect(200, 15, 100, 12); // Outline of battery meter
         g2.drawString(batteryLevel + "%", 200, 45);
+        //lives 
+        g2.setColor(Color.RED);
+        g2.drawString("Lives: " + currentLives, 320, 20); 
         
-        if (selectedDifficulty == DifficultyMode.PERMADEATH) {
-            g2.setColor(Color.RED);
-            g2.drawString("Lives: " + currentLives, 150, 70);
-        }
-        
+        // SPEEDRUN MODE - Show timer and target
         if (selectedDifficulty == DifficultyMode.SPEEDRUN) {
-            int levelTime = speedrunTimer - levelStartTime;
-            int targetTime = speedrunTargets[currentLevel];
-            int seconds = levelTime / 20;
+            int levelTime = speedrunTimer - levelStartTime; // Time spent on current level
+            int targetTime = speedrunTargets[currentLevel]; // Goal time for this level
+            int seconds = levelTime / 20; // Convert ticks to seconds (50ms per tick = 20 ticks per second)
             int targetSeconds = targetTime / 20;
             
+            // Green if beating target, red if not
             g2.setColor(levelTime < targetTime ? Color.GREEN : Color.RED);
             g2.drawString("Time: " + seconds + "s / " + targetSeconds + "s", 150, 70);
         }
         
+        // Show keycard status if collected
         if (hasKeycard) {
             g2.setColor(Color.GREEN);
             g2.drawString("KEYCARD ✓", 280, 90);
         }
         
+        // Show speed boost remaining time if active
         if (speedBoostActive) {
             g2.setColor(Color.CYAN);
             g2.drawString("SPEED: " + (speedBoostDuration / 20) + "s", 150, 90);
         }
+        
+        if (!soundEnabled) {
+            g2.setColor(new Color(255, 100, 100)); // Red color
+            g2.setFont(new Font("DialogInput", Font.BOLD, 14));
+            g2.drawString("🔇 MUTED", boardWidth - 80, 25); // Top right corner
+        }
     }
     
+    /**
+     * Draws the level complete screen with congratulations message.
+     */
     private void drawLevelComplete(Graphics2D g2) {
+        // Dark overlay to dim the game
         g2.setColor(new Color(0, 0, 0, 150));
         g2.fillRect(0, 0, boardWidth, boardHeight);
         
+        // Big "LEVEL COMPLETE!" text
         g2.setColor(Color.GREEN);
         g2.setFont(new Font("DialogInput", Font.BOLD, 36));
         String text = "LEVEL COMPLETE!";
         int textWidth = g2.getFontMetrics().stringWidth(text);
         g2.drawString(text, (boardWidth - textWidth) / 2, boardHeight / 2);
         
+        // Instructions to continue
         g2.setColor(Color.WHITE);
         g2.setFont(new Font("DialogInput", Font.PLAIN, 18));
         String continueText = "Press SPACE to continue";
         int continueWidth = g2.getFontMetrics().stringWidth(continueText);
         g2.drawString(continueText, (boardWidth - continueWidth) / 2, boardHeight / 2 + 40);
+        
+        g2.setColor(Color.WHITE);
+        g2.setFont(new Font("DialogInput", Font.PLAIN, 18));
+        String exitText = "Press ESC to Exit";
+        int exitWidth = g2.getFontMetrics().stringWidth(exitText);
+        g2.drawString(exitText, (boardWidth - exitWidth) / 2, boardHeight / 2 + 60);
     }
     
+    /**
+     * Draws the game over screen - either victory or defeat.
+     * Also converts your score into permanent shop points!
+     */
     private void drawGameOver(Graphics2D g2) {
-        // Add score to total points when game ends
-        if (!gameOver) { // Only add once
+        // Add score to permanent points pool (but only do this once!)
+        if (!gameOver) {
             totalPoints += score;
+            saveProgress(); // Save immediately when points are earned
         }
         
+        // Dark overlay
         g2.setColor(new Color(0, 0, 0, 180));
         g2.fillRect(0, 0, boardWidth, boardHeight);
         
-        String message = (currentLevel >= MAX_LEVEL - 1) ? "FACTORY ESCAPED!" : "SYSTEM FAILURE";
-        Color textColor = (currentLevel >= MAX_LEVEL - 1) ? Color.GREEN : Color.RED;
+        // Victory or defeat message
+        String message = wonGame ? "FACTORY ESCAPED!" : "SYSTEM FAILURE";
+        Color textColor = wonGame ? Color.GREEN : Color.RED;
         
         g2.setColor(textColor);
         g2.setFont(new Font("DialogInput", Font.BOLD, 36));
         int textWidth = g2.getFontMetrics().stringWidth(message);
         g2.drawString(message, (boardWidth - textWidth) / 2, boardHeight / 2 - 40);
         
+        // Show final stats
         g2.setColor(Color.WHITE);
         g2.setFont(new Font("DialogInput", Font.PLAIN, 18));
-        g2.drawString("Final Score: " + score, (boardWidth - 120) / 2, boardHeight / 2);
+        g2.drawString("Final Score: " + score, (boardWidth - 150) / 2, boardHeight / 2);
         
-        // Show points earned
+        // Show points earned and total (this is your currency for the shop!)
         g2.setColor(new Color(0, 255, 100));
-        g2.drawString("Points Earned: " + score, (boardWidth - 160) / 2, boardHeight / 2 + 30);
-        g2.drawString("Total Points: " + totalPoints, (boardWidth - 150) / 2, boardHeight / 2 + 55);
+        g2.drawString("Points Earned: " + score, (boardWidth - 180) / 2, boardHeight / 2 + 30);
+        g2.drawString("Total Points: " + totalPoints, (boardWidth - 160) / 2, boardHeight / 2 + 55);
         
+        // Restart instruction
         g2.setColor(Color.WHITE);
-        g2.drawString("Press R to Restart", (boardWidth - 150) / 2, boardHeight / 2 + 90);
+        g2.drawString("Press R to Restart", (boardWidth - 210) / 2, boardHeight / 2 + 90);
+        g2.setColor(new Color(255, 200, 0)); // Yellow color for the new option
+        g2.drawString("Press ESC to Return to Menu", (boardWidth - 300) / 2, boardHeight / 2 + 115);
     }
     
-    
+    /**
+     * Draws the upgrade shop interface where you can spend points to get stronger.
+     */
     private void drawShop(Graphics2D g2) {
+        // Background matching the menu style
         g2.setColor(new Color(15, 20, 25));
         g2.fillRect(0, 0, boardWidth, boardHeight);
         
-        // Grid background
+        // Tech grid pattern
         g2.setColor(new Color(30, 35, 40));
         for (int x = 0; x < boardWidth; x += 40) {
             g2.drawLine(x, 0, x, boardHeight);
@@ -1382,35 +1772,44 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         int titleWidth = g2.getFontMetrics().stringWidth(title);
         g2.drawString(title, (boardWidth - titleWidth) / 2, 50);
         
-        // Points display
+        // Show how many points you have to spend
         g2.setFont(new Font("Courier New", Font.BOLD, 20));
         g2.setColor(new Color(0, 255, 100));
         String pointsText = "Available Points: " + totalPoints;
         int pointsWidth = g2.getFontMetrics().stringWidth(pointsText);
         g2.drawString(pointsText, (boardWidth - pointsWidth) / 2, 80);
         
-        // Shop items
+        // Reset progress button
+        g2.setColor(new Color(255, 50, 50)); // Red color for danger!
+        g2.fillRoundRect((boardWidth - 280) / 2, boardHeight - 90, 280, 30, 8, 8); // Y axis, Length, witdh and curves
+        g2.setColor(Color.WHITE);
+        g2.setFont(new Font("Courier New", Font.BOLD, 14));
+        String resetText = "Press R to Reset All Progress";
+        int resetWidth = g2.getFontMetrics().stringWidth(resetText);
+        g2.drawString(resetText, (boardWidth - resetWidth) / 2, boardHeight - 70); //Y axis
+            
+        // Draw each shop item
         int yPos = 120;
-        int spacing = 95;
+        int spacing = 95; // Vertical space between items
         
         for (int i = 0; i < shopItems.length; i++) {
             ShopItem item = shopItems[i];
-            boolean isSelected = (i == shopSelectedIndex);
+            boolean isSelected = (i == shopSelectedIndex); // Is this one highlighted?
             
-            // Item box
+            // Background box for each item
             Color boxColor = isSelected ? new Color(0, 150, 255, 100) : new Color(50, 50, 60, 150);
             g2.setColor(boxColor);
             g2.fillRoundRect(40, yPos - 25, boardWidth - 80, 85, 15, 15);
             
-            // Selection border
+            // Highlight border if this item is selected
             if (isSelected) {
                 g2.setColor(new Color(0, 200, 255));
-                g2.setStroke(new BasicStroke(3));
+                g2.setStroke(new BasicStroke(3)); // Thick border
                 g2.drawRoundRect(40, yPos - 25, boardWidth - 80, 85, 15, 15);
-                g2.setStroke(new BasicStroke(1));
+                g2.setStroke(new BasicStroke(1)); // Reset thickness
             }
             
-            // Item name
+            // Item name with level indicator
             g2.setFont(new Font("Courier New", Font.BOLD, 18));
             Color nameColor = item.isMaxed() ? new Color(100, 255, 100) : new Color(255, 200, 0);
             g2.setColor(nameColor);
@@ -1421,12 +1820,13 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             g2.setColor(new Color(200, 200, 200));
             g2.drawString(item.description, 60, yPos + 20);
             
-            // Cost/Status
+            // Cost or "MAXED OUT" status
             g2.setFont(new Font("Courier New", Font.BOLD, 16));
             if (item.isMaxed()) {
                 g2.setColor(new Color(100, 255, 100));
                 g2.drawString("MAXED OUT", 60, yPos + 45);
             } else {
+                // Green if affordable, red if too expensive
                 g2.setColor(totalPoints >= item.getCost() ? new Color(0, 255, 100) : new Color(255, 100, 100));
                 g2.drawString("Cost: " + item.getCost() + " pts", 60, yPos + 45);
             }
@@ -1434,7 +1834,7 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             yPos += spacing;
         }
         
-        // Instructions
+        // Control instructions at bottom
         g2.setFont(new Font("Courier New", Font.BOLD, 16));
         g2.setColor(new Color(0, 255, 100));
         String instructions = "↑↓ - Select    SPACE - Purchase    ESC - Back";
@@ -1442,145 +1842,187 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         g2.drawString(instructions, (boardWidth - instrWidth) / 2, boardHeight - 30);
     }
     
+    /**
+     * Draws the pause menu overlay.
+     */
     private void drawPauseMenu(Graphics2D g2) {
+        // Semi-transparent overlay to dim the game
         g2.setColor(new Color(0, 0, 0, 150));
         g2.fillRect(0, 0, boardWidth, boardHeight);
         
+        // "PAUSED" text
         g2.setColor(Color.YELLOW);
         g2.setFont(new Font("DialogInput", Font.BOLD, 36));
         String text = "PAUSED";
         int textWidth = g2.getFontMetrics().stringWidth(text);
         g2.drawString(text, (boardWidth - textWidth) / 2, boardHeight / 2);
         
+        // Resume instruction
         g2.setColor(Color.WHITE);
         g2.setFont(new Font("DialogInput", Font.PLAIN, 18));
-        g2.drawString("Press P to Resume", (boardWidth - 150) / 2, boardHeight / 2 + 40);
+        g2.drawString("Press P to Resume", (boardWidth - 10) / 2, boardHeight / 2 + 40);
     }
 
-    // MODIFIED: Added speedrun timer and death handling
+    /**
+     * The main game update loop - runs 20 times per second!
+     * This is where all the game logic happens - movement, collisions, battery drain, etc.
+     */
     public void update() {
+        // Don't update if game is paused, over, or not started
         if (gamePaused || gameOver || levelComplete || !gameStarted) return;
         
-     // TIMER UPDATES
-        if (damageFlashTimer > 0) damageFlashTimer--;
-        if (screenShakeTimer > 0) screenShakeTimer--;
+        // Update visual effect timers
+        if (damageFlashTimer > 0) damageFlashTimer--; // Countdown the red flash
+        if (screenShakeTimer > 0) screenShakeTimer--; // Countdown the screen shake
         
+        // Track time in speedrun mode
         if (selectedDifficulty == DifficultyMode.SPEEDRUN) {
             speedrunTimer++;
         }
         
+        // BATTERY DRAIN - your flashlight slowly runs out of power!
         batteryDrainTimer++;
-        if (batteryDrainTimer >= 40 && !previewMode) {
-            int drainRate = Math.max(1, BATTERY_DRAIN_RATE - batteryDrainUpgrade); // Reduce drain
+        if (batteryDrainTimer >= 40 && !previewMode) { // Every 2 seconds (40 ticks * 50ms)
+            // Calculate drain rate with upgrade reduction
+            int drainRate = Math.max(1, BATTERY_DRAIN_RATE - batteryDrainUpgrade);
             batteryLevel = Math.max(0, batteryLevel - drainRate);
             batteryDrainTimer = 0;
             
+            // Dead battery = game over!
             if (batteryLevel <= 0) {
                 handleDeath();
                 return;
             }
         }
         
+        // Speed boost timer countdown
         if (speedBoostActive) {
             speedBoostDuration--;
             if (speedBoostDuration <= 0) {
-                speedBoostActive = false;
+                speedBoostActive = false; // Boost wore off
             }
         }
         
+        // Tell the robot if speed boost is active so it can move faster
         robot.setSpeedBoostActive(speedBoostActive);
         
+        // UPDATE ALL HAZARDS and check for collisions
         for (Hazard hazard : hazards) {
-            hazard.update();
+            hazard.update(); // Each hazard updates its own behavior (moving, flashing, etc.)
             
+            // Check if player is touching this hazard
             if (collision(robot, hazard) && hazard.active) {
+                // Different hazards can hurt you
                 if (hazard.type == HazardType.PATROL_BOT || 
                     hazard.type == HazardType.ACID_POOL ||
                     (hazard.type == HazardType.ELECTRICAL_SPARK && hazard.active) ||
                     (hazard.type == HazardType.LASER_BARRIER && hazard.active)) {
                     
-                	// -------------- //
-                    // THIS IS THE SOUND //
-                	playSound("damage"); 
+                    // Play damage sound effect
+                    playSound("damage"); 
                 	
-                	damageFlashTimer = 15;   // Red flash for 0.75 seconds
+                    // Trigger visual feedback for taking damage
+                    damageFlashTimer = 15;   // Red flash for 0.75 seconds
                     screenShakeTimer = 10;   // Screen shake for 0.5 seconds
                 	
+                    // Take damage - lose battery!
                     batteryLevel = Math.max(0, batteryLevel - 20);
                     if (batteryLevel <= 0) {
-                        handleDeath();
+                        handleDeath(); // Out of battery = death
                         return;
                     }
                     
+                    // Knockback effect - push player back from the hazard
                     robot.x -= robot.velocityX * 2;
                     robot.y -= robot.velocityY * 2;
                 }
             }
         }
         
-        ArrayList<Item> itemsToRemove = new ArrayList<>();
+        // CHECK FOR ITEM PICKUPS
+        ArrayList<Item> itemsToRemove = new ArrayList<>(); // List of items we just picked up
         for (Item item : items) {
             if (!item.collected && collision(robot, item)) {
-                item.collected = true;
-                itemsToRemove.add(item);
+                item.collected = true; // Mark as collected
+                itemsToRemove.add(item); // Schedule for removal
                 
+                // Play pickup sound
                 playSound("pickup");
                 
+                // Apply item effect based on type
                 switch(item.type) {
                     case BATTERY:
-                        batteryLevel = Math.min(maxBattery, batteryLevel + 30);
+                        batteryLevel = Math.min(maxBattery, batteryLevel + 30); // Restore 30% battery
                         score += 50;
                         break;
                     case KEYCARD:
-                        hasKeycard = true;
+                        hasKeycard = true; // Now you can open the exit!
                         score += 100;
                         break;
                     case SPEED_BOOST:
                         speedBoostActive = true;
-                        speedBoostDuration = 200;
+                        speedBoostDuration = 200; // 10 seconds (200 ticks * 50ms)
                         score += 75;
                         break;
                 }
             }
         }
-        items.removeAll(itemsToRemove);
+        items.removeAll(itemsToRemove); // Actually remove the collected items
         
+        // CHECK IF PLAYER REACHED THE EXIT
         if (collision(robot, exit)) {
+            // Can only exit if you have keycard (or on early levels where it's not required)
             if (hasKeycard || currentLevel < 2) {
                 levelComplete = true;
+                // Bonus points for completing level and leftover battery
                 score += 200 + batteryLevel;
                 playSound("victory");
             }
         }
     }
     
-    // NEW: Handle death based on difficulty
+    /**
+     * Handles what happens when the player dies.
+     * Behavior changes based on difficulty mode!
+     */
     private void handleDeath() {
-    	playSound("death");
+        playSound("death");
     	
-        currentLives--;
+        currentLives--; // Lose a life
         
+        // In permadeath mode or when out of lives, it's game over for real
         if (selectedDifficulty == DifficultyMode.PERMADEATH || currentLives <= 0) {
             gameOver = true;
         } else {
-            batteryLevel = maxBattery;
-            hasKeycard = false;
-            speedBoostActive = false;
-            loadLevel();
+            // Normal mode - you get to retry the level!
+            batteryLevel = maxBattery; // Refill battery
+            hasKeycard = false; // Lose keycard
+            speedBoostActive = false; // Lose speed boost
+            loadLevel(); // Reload the current level
             
+            // Show preview again unless in blackout mode
             if (selectedDifficulty != DifficultyMode.BLACKOUT) {
                 startPreview();
             }
         }
     }
     
+    /**
+     * Checks if the robot is colliding with a block (wall or exit).
+     * Returns true if they're overlapping.
+     */
     private boolean collision(Robot r, Block b) {
-        return r.x < b.x + b.width &&
-               r.x + r.width > b.x &&
-               r.y < b.y + b.height &&
-               r.y + r.height > b.y;
+        return r.x < b.x + b.width &&      // Robot's left edge is left of block's right edge
+               r.x + r.width > b.x &&       // Robot's right edge is right of block's left edge
+               r.y < b.y + b.height &&      // Robot's top edge is above block's bottom edge
+               r.y + r.height > b.y;        // Robot's bottom edge is below block's top edge
+        // If all four conditions are true, they must be overlapping!
     }
     
+    /**
+     * Checks collision between robot and an item.
+     * Similar to block collision but accounts for item offset.
+     */
     private boolean collision(Robot r, Item i) {
         return r.x < i.x + i.width + tileSize/4 &&
                r.x + r.width > i.x + tileSize/4 &&
@@ -1588,6 +2030,9 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
                r.y + r.height > i.y + tileSize/4;
     }
     
+    /**
+     * Checks collision between robot and a hazard.
+     */
     private boolean collision(Robot r, Hazard h) {
         return r.x < h.x + h.width &&
                r.x + r.width > h.x &&
@@ -1595,115 +2040,167 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
                r.y + h.height > h.y;
     }
 
+    /**
+     * This gets called automatically by the game timer.
+     * It's what makes the game actually run!
+     */
     @Override
     public void actionPerformed(ActionEvent e) {
         if (gameStarted) {
-            update();
+            update(); // Update game logic
         }
-        repaint();
+        repaint(); // Redraw the screen
     }
 
+    // These are required by the KeyListener interface but we don't use them
     @Override
     public void keyTyped(KeyEvent e) {}
 
     @Override
     public void keyPressed(KeyEvent e) {}
 
-    // MODIFIED: Handle difficulty selection controls
+    /**
+     * Handles all keyboard input - this is where player controls are processed!
+     * Gets called whenever a key is released.
+     */
     @Override
     public void keyReleased(KeyEvent e) {
+        // SHOP MENU CONTROLS
         if (!gameStarted) {
-            if (showShop) { // ADD THIS ENTIRE BLOCK
+            if (showShop) {
+            	
+            	//Check if we're in confirmation dialog first
+                if (showResetConfirmation) {
+                    if (e.getKeyCode() == KeyEvent.VK_Y) {
+                        // Confirmed - reset everything!
+                        playSound("beep");
+                        resetProgress();
+                        showResetConfirmation = false;
+                        repaint();
+                    } else if (e.getKeyCode() == KeyEvent.VK_N || e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                        // Cancelled
+                        playSound("beep");
+                        showResetConfirmation = false;
+                        repaint();
+                    }
+                    return; // Don't process other keys while in confirmation
+                }
+                
                 if (e.getKeyCode() == KeyEvent.VK_UP) {
+                    // Scroll up in shop (wraps around to bottom)
                     shopSelectedIndex = (shopSelectedIndex - 1 + shopItems.length) % shopItems.length;
                     repaint();
+                    
                 } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
+                    // Scroll down in shop (wraps around to top)
                     shopSelectedIndex = (shopSelectedIndex + 1) % shopItems.length;
                     repaint();
-                } else if (e.getKeyCode() == KeyEvent.VK_SPACE) {
-                    purchaseUpgrade();
+                    
+                } else if (e.getKeyCode() == KeyEvent.VK_R) {
+                    purchaseUpgrade(); // Try to buy the selected upgrade } else if (e.getKeyCode() == KeyEvent.VK_R) { // ADD THIS - R key to reset
+                    playSound("beep");
+                    showResetConfirmation = true; // Show confirmation dialog
+                    repaint();
+                
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
-                    showShop = false;
+                    showShop = false; // Close shop and go back to main menu
                     repaint();
                 }
-                return;
+                return; // Don't process other controls while in shop
             }
             
+            // DIFFICULTY SELECTION CONTROLS
             if (showDifficultySelect) {
                 if (e.getKeyCode() == KeyEvent.VK_UP) {
-                	playSound("beep");
+                    playSound("beep");
+                    // Cycle to previous difficulty (wraps around)
                     int currentIndex = selectedDifficulty.ordinal();
                     currentIndex = (currentIndex - 1 + DifficultyMode.values().length) % DifficultyMode.values().length;
                     selectedDifficulty = DifficultyMode.values()[currentIndex];
                     repaint();
                 } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
-                	playSound("beep");
+                    playSound("beep");
+                    // Cycle to next difficulty (wraps around)
                     int currentIndex = selectedDifficulty.ordinal();
                     currentIndex = (currentIndex + 1) % DifficultyMode.values().length;
                     selectedDifficulty = DifficultyMode.values()[currentIndex];
                     repaint();
                 } else if (e.getKeyCode() == KeyEvent.VK_SPACE) {
-                	playSound("beep");
-                    startGame();
+                    playSound("beep");
+                    startGame(); // Confirm difficulty and start!
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
-                    showDifficultySelect = false;
+                    showDifficultySelect = false; // Go back to main menu
                     repaint();
                 }
                 return;
             }
             
+            // INSTRUCTIONS SCREEN CONTROLS
             if (showInstructions) {
                 if (e.getKeyCode() == KeyEvent.VK_SPACE) {
-                	playSound("beep");
+                    playSound("beep");
                     startGame();
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
                     showInstructions = false;
+                    repaint();
                 }
             } else {
+                // MAIN MENU CONTROLS
                 if (e.getKeyCode() == KeyEvent.VK_SPACE) {
-                	playSound("beep");
+                    playSound("beep");
                     startGame();
                 } else if (e.getKeyCode() == KeyEvent.VK_D) {
-                	playSound("beep");
+                    playSound("beep");
                     showDifficultySelection();
                 } else if (e.getKeyCode() == KeyEvent.VK_U) { 
-                	playSound("beep");
+                    playSound("beep");
                     showShop();
                 } else if (e.getKeyCode() == KeyEvent.VK_I) {
-                	playSound("beep");
+                    playSound("beep");
                     showInstructions();
                 } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
-                    System.exit(0);
+                    System.exit(0); // Quit the game
                 }
             }
             return;
         }
         
+        // LEVEL COMPLETE CONTROLS
         if (levelComplete) {
             if (e.getKeyCode() == KeyEvent.VK_SPACE) {
                 if (currentLevel < MAX_LEVEL - 1) {
+                    // More levels to go - advance to next one!
                     currentLevel++;
                     levelComplete = false;
-                    hasKeycard = false;
+                    hasKeycard = false; // Lose keycard between levels
                     
+                    // Refill battery unless in permadeath mode
                     if (selectedDifficulty != DifficultyMode.PERMADEATH) {
                         batteryLevel = maxBattery;
                     }
                     
                     loadLevel();
                     
+                    // Show preview unless in blackout mode
                     if (selectedDifficulty != DifficultyMode.BLACKOUT) {
                         startPreview();
                     }
                 } else {
+                    // That was the last level - you win
+                	wonGame = true;
                     gameOver = true;
                 }
-            }
+            } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                levelComplete = false; // Go back to main menu
+            
+            }    
             return;
         }
         
+        // GAME OVER CONTROLS
         if (gameOver) {
             if (e.getKeyCode() == KeyEvent.VK_R) {
+                // Restart the whole game from level 1
                 currentLevel = 0;
                 score = 0;
                 batteryLevel = maxBattery;
@@ -1712,7 +2209,8 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
                 gameOver = false;
                 levelComplete = false;
                 speedrunTimer = 0;
-                
+                wonGame = false;
+                // Reset lives based on difficulty
                 switch(selectedDifficulty) {
                     case PERMADEATH:
                         currentLives = 1;
@@ -1729,26 +2227,29 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
                     startPreview();
                 }
             } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
-                showMainMenu();
+                showMainMenu(); // Go back to main menu
             }
             return;
         }
         
+        // PAUSE CONTROL (works during gameplay)
         if (e.getKeyCode() == KeyEvent.VK_P) {
-            gamePaused = !gamePaused;
+            gamePaused = !gamePaused; // Toggle pause state
             if (gamePaused) {
-                gameLoop.stop();
+                // Game was just paused - stop all timers
+                
                 if (previewTimer_obj != null) previewTimer_obj.stop();
                 
-                // ← ADD: Pause music
+                // Pause the music too
                 if (gameMusicClip != null && gameMusicClip.isRunning()) {
                     gameMusicClip.stop();
                 }
             } else {
+                // Game was just unpaused - restart timers
                 gameLoop.start();
                 if (previewMode && previewTimer_obj != null) previewTimer_obj.start();
                 
-                // ← ADD: Resume music
+                // Resume the music
                 if (soundEnabled && gameMusicClip != null) {
                     gameMusicClip.start();
                 }
@@ -1756,96 +2257,116 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             return;
         }
         
+        // SOUND TOGGLE (M key)
         if (e.getKeyCode() == KeyEvent.VK_M) {
-            soundEnabled = !soundEnabled;
+            soundEnabled = !soundEnabled; // Flip the sound on/off
             System.out.println("Sound: " + (soundEnabled ? "ON" : "OFF"));
             
             if (soundEnabled) {
-                playBeep();
-                // Restart appropriate music
+                playBeep(); // Confirmation beep
+                // Restart appropriate music based on what screen we're on
                 if (!gameStarted) {
                     playMenuMusic();
                 } else if (!gameOver && !levelComplete) {
                     playGameMusic();
                 }
             } else {
-                // Stop all music when muted
+                // Muted - stop all sounds
                 stopAllMusic();
             }
             return;
         }
+        
+        // Don't allow movement if paused
         if (gamePaused) return;
 
-     //- Prevent movement during preview
-     if (previewMode) return;
+        // Don't allow movement during preview (you need to memorize the map first!)
+        if (previewMode) return;
 
-     if (e.getKeyCode() == KeyEvent.VK_UP || e.getKeyCode() == KeyEvent.VK_W) {
-         robot.updateDirection('U');
-         moveRobot();
-     }
+        // PLAYER MOVEMENT CONTROLS
+        // Arrow keys or WASD work the same way
+        if (e.getKeyCode() == KeyEvent.VK_UP || e.getKeyCode() == KeyEvent.VK_W) {
+            robot.updateDirection('U'); // Tell robot to move up
+            moveRobot(); // Actually try to move
+        }
         else if (e.getKeyCode() == KeyEvent.VK_DOWN || e.getKeyCode() == KeyEvent.VK_S) {
-            robot.updateDirection('D');
+            robot.updateDirection('D'); // Move down
             moveRobot();
         }
         else if (e.getKeyCode() == KeyEvent.VK_LEFT || e.getKeyCode() == KeyEvent.VK_A) {
-            robot.updateDirection('L');
+            robot.updateDirection('L'); // Move left
             moveRobot();
         }
         else if (e.getKeyCode() == KeyEvent.VK_RIGHT || e.getKeyCode() == KeyEvent.VK_D) {
-            robot.updateDirection('R');
+            robot.updateDirection('R'); // Move right
             moveRobot();
         }
     }
     
+    /**
+     * Actually moves the robot if the path is clear.
+     * Checks for walls and obstacles before allowing movement.
+     */
     private void moveRobot() {
+        // Calculate where the robot WANTS to move
         int newX = robot.x + robot.velocityX;
         int newY = robot.y + robot.velocityY;
         
-        boolean canMove = true;
+        boolean canMove = true; // Assume we can move until proven otherwise
+        
+        // Check collision with all walls
         for (Block wall : walls) {
             if (newX < wall.x + wall.width && newX + robot.width > wall.x &&
                 newY < wall.y + wall.height && newY + robot.height > wall.y) {
-                canMove = false;
+                canMove = false; // Hit a wall - can't move there!
                 break;
             }
         }
         
+        // Check collision with moving walls (they're solid too!)
         for (Hazard h : hazards) {
             if (h.type == HazardType.MOVING_WALL) {
                 if (newX < h.x + h.width && newX + robot.width > h.x &&
                     newY < h.y + h.height && newY + robot.height > h.y) {
-                    canMove = false;
+                    canMove = false; // Hit a moving wall!
                     break;
                 }
             }
         }
         
+        // If the path is clear, actually move the robot
         if (canMove) {
             robot.x = newX;
             robot.y = newY;
         }
     }
     
- // ========================================
-    // SOUND SYSTEM - ADD THIS ENTIRE SECTION
+    // ========================================
+    // SOUND SYSTEM
+    // This handles playing sound effects during gameplay
     // ========================================
     
+    /**
+     * Plays a sound effect from the /sounds/ folder.
+     * Sound file should be a .wav file with the given name.
+     */
     private void playSound(String soundName) {
-        if (!soundEnabled) return;
+        if (!soundEnabled) return; // Don't play if sound is muted
         
         try {
-            // Load sound file
+            // Try to load the sound file from the resources folder
             java.net.URL soundURL = getClass().getResource("/sounds/" + soundName + ".wav");
             
             if (soundURL == null) {
+                // File not found - print helpful error message
                 System.out.println("⚠️ Sound file not found: /sounds/" + soundName + ".wav");
                 System.out.println("Make sure the file is in src/sounds/ folder");
                 return;
             }
             
-            // Play the sound
+            // Create and play the sound clip
             java.applet.AudioClip clip = java.applet.Applet.newAudioClip(soundURL);
-            clip.play();
+            clip.play(); // Plays once then stops
             
             System.out.println("✓ Playing sound: " + soundName);
             
@@ -1855,29 +2376,37 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         }
     }
     
-    // Fallback beep if sounds don't work
+    /**
+     * Fallback beep sound if sound files aren't working.
+     * Uses the system beep - always available!
+     */
     private void playBeep() {
         if (!soundEnabled) return;
         java.awt.Toolkit.getDefaultToolkit().beep();
     }
 
     // ========================================
-    // BACKGROUND MUSIC SYSTEM - ALL THIS
+    // BACKGROUND MUSIC SYSTEM
+    // Handles looping background music for menus and gameplay
     // ========================================
 
+    /**
+     * Starts playing the menu background music on loop.
+     * Won't restart if already playing.
+     */
     private void playMenuMusic() {
         if (!soundEnabled) return;
         
-        // Stop game music if playing
+        // Stop game music if it's playing
         stopGameMusic();
         
-        // Don't restart if already playing
+        // Don't restart if already playing (avoids restarting when returning to menu)
         if (menuMusicPlaying && menuMusicClip != null && menuMusicClip.isRunning()) {
             return;
         }
         
         try {
-            // Load menu music
+            // Load menu music file
             URL musicURL = getClass().getResource("/sounds/menu_music.wav");
             
             if (musicURL == null) {
@@ -1885,21 +2414,21 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
                 return;
             }
             
-            // Stop old clip if exists
+            // Clean up old music clip if it exists
             if (menuMusicClip != null) {
                 menuMusicClip.stop();
                 menuMusicClip.close();
             }
             
-            // Create new clip
+            // Create new music clip
             AudioInputStream audioIn = AudioSystem.getAudioInputStream(musicURL);
             menuMusicClip = AudioSystem.getClip();
             menuMusicClip.open(audioIn);
             
-            // Loop continuously
+            // Loop forever until we stop it
             menuMusicClip.loop(Clip.LOOP_CONTINUOUSLY);
             
-            // Set volume (50% volume)
+            // Set volume to 50% (music shouldn't be too loud)
             setVolume(menuMusicClip, 0.5f);
             
             menuMusicPlaying = true;
@@ -1910,6 +2439,9 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         }
     }
 
+    /**
+     * Stops the menu music.
+     */
     private void stopMenuMusic() {
         if (menuMusicClip != null && menuMusicClip.isRunning()) {
             menuMusicClip.stop();
@@ -1918,10 +2450,14 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         }
     }
 
+    /**
+     * Starts playing the gameplay background music on loop.
+     * Won't restart if already playing.
+     */
     private void playGameMusic() {
         if (!soundEnabled) return;
         
-        // Stop menu music if playing
+        // Stop menu music if it's playing
         stopMenuMusic();
         
         // Don't restart if already playing
@@ -1930,7 +2466,7 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         }
         
         try {
-            // Load game music
+            // Load game music file
             URL musicURL = getClass().getResource("/sounds/game_music.wav");
             
             if (musicURL == null) {
@@ -1938,7 +2474,7 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
                 return;
             }
             
-            // Stop old clip if exists
+            // Clean up old clip
             if (gameMusicClip != null) {
                 gameMusicClip.stop();
                 gameMusicClip.close();
@@ -1952,7 +2488,7 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
             // Loop continuously
             gameMusicClip.loop(Clip.LOOP_CONTINUOUSLY);
             
-            // Set volume (40% - quieter during gameplay)
+            // Set volume to 40% (quieter during gameplay so you can hear sound effects)
             setVolume(gameMusicClip, 0.4f);
             
             gameMusicPlaying = true;
@@ -1963,6 +2499,9 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         }
     }
 
+    /**
+     * Stops the gameplay music.
+     */
     private void stopGameMusic() {
         if (gameMusicClip != null && gameMusicClip.isRunning()) {
             gameMusicClip.stop();
@@ -1971,17 +2510,27 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         }
     }
 
+    /**
+     * Stops all music (both menu and game).
+     * Used when muting sound completely.
+     */
     private void stopAllMusic() {
         stopMenuMusic();
         stopGameMusic();
     }
 
-    // Set volume for music (0.0 to 1.0)
+    /**
+     * Adjusts the volume of a music clip.
+     * @param clip The audio clip to adjust
+     * @param volume Volume level from 0.0 (silent) to 1.0 (full volume)
+     */
     private void setVolume(Clip clip, float volume) {
         if (clip == null) return;
         
         try {
+            // Get the volume control for this clip
             FloatControl gainControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+            // Convert 0.0-1.0 volume to decibels (the unit used by the audio system)
             float dB = (float) (Math.log(volume) / Math.log(10.0) * 20.0);
             gainControl.setValue(dB);
         } catch (Exception e) {
@@ -1989,18 +2538,26 @@ public class FactoryMaze extends JPanel implements ActionListener, KeyListener {
         }
     }
 
+    /**
+     * The main method - this is where the program starts!
+     * Creates the game window and starts everything up.
+     */
     public static void main(String[] args) {
+        // Use EventQueue to ensure we're on the correct thread for GUI operations
         EventQueue.invokeLater(() -> {
+            // Create the game window
             JFrame frame = new JFrame("Factory Outage: Memory Escape");
-            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            frame.setResizable(false);
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); // Close program when X is clicked
+            frame.setResizable(false); // Don't allow resizing (would mess up the graphics)
             
+            // Create the game itself
             FactoryMaze game = new FactoryMaze();
-            frame.add(game);
-            frame.pack();
-            frame.setLocationRelativeTo(null);
-            frame.setVisible(true);
+            frame.add(game); // Add game to the window
+            frame.pack(); // Size window to fit the game
+            frame.setLocationRelativeTo(null); // Center window on screen
+            frame.setVisible(true); // Show the window
             
+            // Make sure the game can receive keyboard input right away
             game.requestFocusInWindow();
         });
     }
